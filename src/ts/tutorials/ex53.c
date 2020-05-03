@@ -30,6 +30,8 @@ typedef struct {
   PetscScalar K_fl;   /* fluid bulk modulus */
   PetscScalar K_sg;   /* solid grain bulk modulus */
   PetscScalar alpha;  /* biot coefficient */
+  PetscScalar nu;     /* drained poisson ratio */
+  PetscScalar E;      /* young's modulus */
 } Parameter;
 
 typedef struct {
@@ -113,12 +115,12 @@ static void f0_quadratic_u(PetscInt dim, PetscInt Nf, PetscInt NfAux,
                            PetscReal t, const PetscReal x[], PetscInt numConstants, const PetscScalar constants[], PetscScalar f0[])
 {
   const PetscReal G      = constants[0];
-  const PetscReal K_sg   = constants[7];
-//  const PetscReal nu     = 0.25;
+//  const PetscReal K_sg   = constants[7];
+  const PetscReal nu     = constants[9];
   const PetscReal alpha  = constants[8];
-  const PetscReal K_dr = K_sg * (1.0 - alpha);
-//  const PetscReal lambda = (2.0*G*nu)/(1.0 - 2.0*nu);
-  const PetscReal lambda = K_dr - (2.0 * G) / 3.0;
+//  const PetscReal K_dr = K_sg * (1.0 - alpha);
+  const PetscReal lambda = (2.0*G*nu)/(1.0 - 2.0*nu);
+//  const PetscReal lambda = K_dr - (2.0 * G) / 3.0;
   PetscInt        d;
 
   for (d = 0; d < dim-1; ++d) f0[d] -= 2.0*G - alpha;
@@ -132,12 +134,12 @@ static void f1_u(PetscInt dim, PetscInt Nf, PetscInt NfAux,
 {
   const PetscInt  Nc     = dim;
   const PetscReal G      = constants[0];
-//  const PetscReal nu     = 0.25;
-  const PetscReal K_sg   = constants[7];
+  const PetscReal nu     = constants[9];
+//  const PetscReal K_sg   = constants[7];
   const PetscReal alpha  = constants[8];
-  const PetscReal K_dr = K_sg * (1.0 - alpha);
-//  const PetscReal lambda = (2.0*G*nu)/(1.0 - 2.0*nu);
-  const PetscReal lambda = K_dr - (2.0 * G) / 3.0;
+//  const PetscReal K_dr = K_sg * (1.0 - alpha);
+  const PetscReal lambda = (2.0*G*nu)/(1.0 - 2.0*nu);
+//  const PetscReal lambda = K_dr - (2.0 * G) / 3.0;
   PetscInt        c, d;
 
   for (c = 0; c < Nc; ++c) {
@@ -221,12 +223,12 @@ static void g2_ue(PetscInt dim, PetscInt Nf, PetscInt NfAux,
                   PetscReal t, PetscReal u_tShift, const PetscReal x[], PetscInt numConstants, const PetscScalar constants[], PetscScalar g2[])
 {
   const PetscReal G      = constants[0];
-  const PetscReal K_sg   = constants[7];
-//  const PetscReal nu     = 0.25;
-  const PetscReal alpha  = constants[8];
-  const PetscReal K_dr = K_sg * (1.0 - alpha);
-//  const PetscReal lambda = (2.0*G*nu)/(1.0 - 2.0*nu);
-  const PetscReal lambda = K_dr - (2.0 * G) / 3.0;
+//  const PetscReal K_sg   = constants[7];
+  const PetscReal nu     = constants[9];
+//  const PetscReal alpha  = constants[8];
+//  const PetscReal K_dr = K_sg * (1.0 - alpha);
+  const PetscReal lambda = (2.0*G*nu)/(1.0 - 2.0*nu);
+//  const PetscReal lambda = K_dr - (2.0 * G) / 3.0;
 
   PetscInt        d;
 
@@ -328,6 +330,8 @@ static PetscErrorCode SetupParameters(AppCtx *ctx)
   ierr = PetscBagRegisterScalar(bag, &p->K_fl,   1.0 ,             "K_fl",    "Fluid Bulk Modulus, Pa");CHKERRQ(ierr);  
   ierr = PetscBagRegisterScalar(bag, &p->K_sg,   1.0 ,             "K_sg",    "Solid Bulk Modulus, Pa");CHKERRQ(ierr);
   ierr = PetscBagRegisterScalar(bag, &p->alpha,  1.0 ,             "alpha",   "Biot Coefficient");CHKERRQ(ierr);
+  ierr = PetscBagRegisterScalar(bag, &p->nu,     0.25,             "nu",      "Drained Poisson's Ratio, -");CHKERRQ(ierr);
+  ierr = PetscBagRegisterScalar(bag, &p->E,      1.0,              "E",       "Young's Modulus, Pa");CHKERRQ(ierr);
 /*  ierr = PetscBagRegisterScalar(bag, &p->grav,   9.80665,          "g",       "Accel. Gravity, m / s**2");CHKERRQ(ierr);*/
 /*  ierr = PetscBagRegisterScalar(bag, &p->lambda, 6.5E10,           "lambda",  "Lame #1, Pa");CHKERRQ(ierr);*/
 
@@ -438,7 +442,7 @@ static PetscErrorCode SetupPrimalProblem(DM dm, AppCtx *user)
   /* Setup constants */
   {
     Parameter  *param;
-    PetscScalar constants[9];
+    PetscScalar constants[10];
 
     ierr = PetscBagGetData(user->bag, (void **) &param);CHKERRQ(ierr);
 
@@ -451,7 +455,8 @@ static PetscErrorCode SetupPrimalProblem(DM dm, AppCtx *user)
     constants[6] = param->K_fl;   /* fluid bulk modulus */
     constants[7] = param->K_sg;   /* solid grain bulk modulus */
     constants[8] = param->alpha;  /* biot coefficient */
-    ierr = PetscDSSetConstants(prob, 9, constants);CHKERRQ(ierr);
+    constants[9] = param->nu;     /* drained poisson ratio */
+    ierr = PetscDSSetConstants(prob, 10, constants);CHKERRQ(ierr);
   }
   PetscFunctionReturn(0);
 }
@@ -557,3 +562,18 @@ int main(int argc, char **argv)
   ierr = PetscFinalize();
   return ierr;
 }
+
+
+/*TEST
+
+  test:
+    suffix: 2d_p1_quad
+    requires: triangle
+    args: -ts_max_steps 5 -displacement_petscspace_degree 2 -tracestrain_petscspace_degree 1 -pressure_petscspace_degree 1 -dm_refine 2 -dmsnes_check .0001 -snes_monitor_short -snes_converged_reason -ts_monitor
+  test:
+    suffix: 2d_p1_trig
+    requires: triangle
+    args: -ts_max_steps 5 -displacement_petscspace_degree 2 -tracestrain_petscspace_degree 1 -pressure_petscspace_degree 1 -dm_refine 2 -convest_num_refine 3 -snes_convergence_estimate -ts_monitor
+  test:
+
+TEST*/
