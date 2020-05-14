@@ -54,9 +54,19 @@ and eventually adaptivity.\n\n\n";
 #include <petscsnes.h>
 #include <petscds.h>
 #include <petscconvest.h>
+#include <petscbag.h>
 
 typedef enum {SOL_QUADRATIC, NUM_SOLUTION_TYPES} SolutionType;
 const char *solutionTypes[NUM_SOLUTION_TYPES+1] = {"quadratic", "unknown"};
+
+typedef struct {
+  PetscScalar mu;    /* shear modulus */
+  PetscScalar K_u;   /* undrained bulk modulus */
+  PetscScalar alpha; /* Biot effective stress coefficient */
+  PetscScalar M;     /* Biot modulus */
+  PetscScalar k;     /* (isotropic) permeability */
+  PetscScalar mu_f;  /* fluid dynamic viscosity */
+} Parameter;
 
 typedef struct {
   /* Domain and mesh definition */
@@ -65,6 +75,7 @@ typedef struct {
   PetscBool    simplex;     /* Simplicial mesh */
   /* Problem definition */
   SolutionType solType;     /* Type of exact solution */
+  PetscBag     bag;
 } AppCtx;
 
 static PetscErrorCode quadratic_2d_u(PetscInt dim, PetscReal time, const PetscReal x[], PetscInt Nc, PetscScalar *u, void *ctx)
@@ -127,10 +138,12 @@ static void f0_quadratic_u(PetscInt dim, PetscInt Nf, PetscInt NfAux,
                            const PetscInt aOff[], const PetscInt aOff_x[], const PetscScalar a[], const PetscScalar a_t[], const PetscScalar a_x[],
                            PetscReal t, const PetscReal x[], PetscInt numConstants, const PetscScalar constants[], PetscScalar f0[])
 {
-  const PetscReal G      = 1.0;
-  const PetscReal nu     = 0.25;
-  const PetscReal alpha  = 1.0;
-  const PetscReal lambda = (2.0*G*nu)/(1.0 - 2.0*nu);
+  const PetscReal G      = constants[0];
+  const PetscReal K_u    = constants[1];
+  const PetscReal alpha  = constants[2];
+  const PetscReal M      = constants[3];
+  const PetscReal K_d    = K_u - alpha*alpha*M;
+  const PetscReal lambda = K_d - (2.0 * G) / 3.0;
   PetscInt        d;
 
   for (d = 0; d < dim-1; ++d) f0[d] -= 2.0*G - alpha;
@@ -143,10 +156,12 @@ static void f1_u(PetscInt dim, PetscInt Nf, PetscInt NfAux,
                  PetscReal t, const PetscReal x[], PetscInt numConstants, const PetscScalar constants[], PetscScalar f1[])
 {
   const PetscInt  Nc     = dim;
-  const PetscReal G      = 1.0;
-  const PetscReal nu     = 0.25;
-  const PetscReal alpha  = 1.0;
-  const PetscReal lambda = (2.0*G*nu)/(1.0 - 2.0*nu);
+  const PetscReal G      = constants[0];
+  const PetscReal K_u    = constants[1];
+  const PetscReal alpha  = constants[2];
+  const PetscReal M      = constants[3];
+  const PetscReal K_d    = K_u - alpha*alpha*M;
+  const PetscReal lambda = K_d - (2.0 * G) / 3.0;
   PetscInt        c, d;
 
   for (c = 0; c < Nc; ++c) {
@@ -176,8 +191,8 @@ static void f0_p(PetscInt dim, PetscInt Nf, PetscInt NfAux,
                  const PetscInt aOff[], const PetscInt aOff_x[], const PetscScalar a[], const PetscScalar a_t[], const PetscScalar a_x[],
                  PetscReal t, const PetscReal x[], PetscInt numConstants, const PetscScalar constants[], PetscScalar f0[])
 {
-  const PetscReal alpha = 1.0;
-  const PetscReal M     = 1.0;
+  const PetscReal alpha  = constants[2];
+  const PetscReal M      = constants[3];
 
   f0[0] += u_t ? alpha*u_t[uOff[1]] : 0.0;
   f0[0] += u_t ? u_t[uOff[2]]/M     : 0.0;
@@ -188,7 +203,7 @@ static void f1_p(PetscInt dim, PetscInt Nf, PetscInt NfAux,
                  const PetscInt aOff[], const PetscInt aOff_x[], const PetscScalar a[], const PetscScalar a_t[], const PetscScalar a_x[],
                  PetscReal t, const PetscReal x[], PetscInt numConstants, const PetscScalar constants[], PetscScalar f1[])
 {
-  const PetscReal kappa = 1.0;
+  const PetscReal kappa = constants[4];
   PetscInt        d;
 
   for (d = 0; d < dim; ++d) {
@@ -208,7 +223,7 @@ static void g3_uu(PetscInt dim, PetscInt Nf, PetscInt NfAux,
                   PetscReal t, PetscReal u_tShift, const PetscReal x[], PetscInt numConstants, const PetscScalar constants[], PetscScalar g3[])
 {
   const PetscInt  Nc = dim;
-  const PetscReal G  = 1.0;
+  const PetscReal G  = constants[0];
   PetscInt        c, d;
 
   for (c = 0; c < Nc; ++c) {
@@ -224,9 +239,12 @@ static void g2_ue(PetscInt dim, PetscInt Nf, PetscInt NfAux,
                   const PetscInt aOff[], const PetscInt aOff_x[], const PetscScalar a[], const PetscScalar a_t[], const PetscScalar a_x[],
                   PetscReal t, PetscReal u_tShift, const PetscReal x[], PetscInt numConstants, const PetscScalar constants[], PetscScalar g2[])
 {
-  const PetscReal G      = 1.0;
-  const PetscReal nu     = 0.25;
-  const PetscReal lambda = (2.0*G*nu)/(1.0 - 2.0*nu);
+  const PetscReal G      = constants[0];
+  const PetscReal K_u    = constants[1];
+  const PetscReal alpha  = constants[2];
+  const PetscReal M      = constants[3];
+  const PetscReal K_d    = K_u - alpha*alpha*M;
+  const PetscReal lambda = K_d - (2.0 * G) / 3.0;
   PetscInt        d;
 
   for (d = 0; d < dim; ++d) {
@@ -239,7 +257,7 @@ static void g2_up(PetscInt dim, PetscInt Nf, PetscInt NfAux,
                   const PetscInt aOff[], const PetscInt aOff_x[], const PetscScalar a[], const PetscScalar a_t[], const PetscScalar a_x[],
                   PetscReal t, PetscReal u_tShift, const PetscReal x[], PetscInt numConstants, const PetscScalar constants[], PetscScalar g2[])
 {
-  const PetscReal alpha = 1.0;
+  const PetscReal alpha = constants[2];
   PetscInt        d;
 
   for (d = 0; d < dim; ++d) {
@@ -271,7 +289,7 @@ static void g3_pp(PetscInt dim, PetscInt Nf, PetscInt NfAux,
                   const PetscInt aOff[], const PetscInt aOff_x[], const PetscScalar a[], const PetscScalar a_t[], const PetscScalar a_x[],
                   PetscReal t, PetscReal u_tShift, const PetscReal x[], PetscInt numConstants, const PetscScalar constants[], PetscScalar g3[])
 {
-  const PetscReal kappa = 1.0;
+  const PetscReal kappa = constants[4];
   PetscInt        d;
 
   for (d = 0; d < dim; ++d) g3[d*dim+d] = kappa;
@@ -296,6 +314,25 @@ static PetscErrorCode ProcessOptions(MPI_Comm comm, AppCtx *options)
   options->solType = (SolutionType) sol;
   ierr = PetscOptionsFList("-dm_type", "Convert DMPlex to another format", "ex17.c", DMList, options->dmType, options->dmType, 256, NULL);CHKERRQ(ierr);
   ierr = PetscOptionsEnd();
+  PetscFunctionReturn(0);
+}
+
+static PetscErrorCode SetupParameters(AppCtx *ctx)
+{
+  PetscBag       bag;
+  Parameter     *p;
+  PetscErrorCode ierr;
+
+  PetscFunctionBeginUser;
+  ierr = PetscBagGetData(ctx->bag, (void **) &p);CHKERRQ(ierr);
+  ierr = PetscBagSetName(ctx->bag, "par", "Poroelastic Parameters");CHKERRQ(ierr);
+  bag  = ctx->bag;
+  ierr = PetscBagRegisterScalar(bag, &p->mu,    1.0, "mu",    "Shear Modulus, Pa");CHKERRQ(ierr);
+  ierr = PetscBagRegisterScalar(bag, &p->K_u,   1.0, "K_u",   "Undrained Bulk Modulus, Pa");CHKERRQ(ierr);
+  ierr = PetscBagRegisterScalar(bag, &p->alpha, 1.0, "alpha", "Biot Effective Stress Coefficient");CHKERRQ(ierr);
+  ierr = PetscBagRegisterScalar(bag, &p->M,     1.0, "M",     "Biot Modulus");CHKERRQ(ierr);
+  ierr = PetscBagRegisterScalar(bag, &p->k,     1.0, "k",     "Isotropic Permeability, m**2");CHKERRQ(ierr);
+  ierr = PetscBagRegisterScalar(bag, &p->mu_f,  1.0, "mu_f",  "Fluid Dynamic Viscosity, Pa*s");CHKERRQ(ierr);
   PetscFunctionReturn(0);
 }
 
@@ -383,6 +420,19 @@ static PetscErrorCode SetupPrimalProblem(DM dm, AppCtx *user)
     ierr = DMAddBoundary(dm, DM_BC_ESSENTIAL, "wall displacement", "marker", 0, 0, NULL, (void (*)(void)) exact[0], 1, &id, user);CHKERRQ(ierr);
     ierr = DMAddBoundary(dm, DM_BC_ESSENTIAL, "wall pressure",     "marker", 2, 0, NULL, (void (*)(void)) exact[2], 1, &id, user);CHKERRQ(ierr);
   }
+  {
+    Parameter  *param;
+    PetscScalar constants[5];
+
+    ierr = PetscBagGetData(user->bag, (void **) &param);CHKERRQ(ierr);
+
+    constants[0] = param->mu;            /* shear modulus */
+    constants[1] = param->K_u;           /* undrained bulk modulus */
+    constants[2] = param->alpha;         /* Biot effective stress coefficient */
+    constants[3] = param->M;             /* Biot modulus */
+    constants[4] = param->k/param->mu_f; /* Darcy coefficient */
+    ierr = PetscDSSetConstants(prob, 5, constants);CHKERRQ(ierr);
+  }
   PetscFunctionReturn(0);
 }
 
@@ -441,6 +491,8 @@ int main(int argc, char **argv)
 
   ierr = PetscInitialize(&argc, &argv, NULL,help);if (ierr) return ierr;
   ierr = ProcessOptions(PETSC_COMM_WORLD, &user);CHKERRQ(ierr);
+  ierr = PetscBagCreate(PETSC_COMM_SELF, sizeof(Parameter), &user.bag);CHKERRQ(ierr);
+  ierr = SetupParameters(&user);CHKERRQ(ierr);
   /* Primal system */
   ierr = SNESCreate(PETSC_COMM_WORLD, &snes);CHKERRQ(ierr);
   ierr = CreateMesh(PETSC_COMM_WORLD, &user, &dm);CHKERRQ(ierr);
@@ -462,6 +514,7 @@ int main(int argc, char **argv)
   ierr = VecDestroy(&u);CHKERRQ(ierr);
   ierr = SNESDestroy(&snes);CHKERRQ(ierr);
   ierr = DMDestroy(&dm);CHKERRQ(ierr);
+  ierr = PetscBagDestroy(&user.bag);CHKERRQ(ierr);
   ierr = PetscFinalize();
   return ierr;
 }
