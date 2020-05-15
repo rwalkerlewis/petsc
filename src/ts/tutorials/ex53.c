@@ -9,11 +9,13 @@ Contributed by: Robert Walker <rwalker6@buffalo.edu>\n\n\n";
 #include <petscds.h>
 #include <petscbag.h>
 
-/*
-  Three Field Biot Poroelasticity (Quasi-Static):
-             0 = f(x,t) + div \sigma
-  d \zeta / dt = \gamma(x,t) - div q(p)
-         div u = \epsilon_v
+/* See derivation in SNES ex11.
+
+The weak form would then be, using test function $(v, q, \tau)$,
+
+            (q, \frac{1}{M} \frac{dp}{dt}) + (q, \alpha \frac{d\varepsilon}{dt}) + (\nabla q, \kappa \nabla p) = (q, g)
+ -(\nabla v, 2 G \epsilon) - (\nabla\cdot v, \frac{2 G \nu}{1 - 2\nu} \varepsilon) + \alpha (\nabla\cdot v, p) = (v, f)
+                                                                          (\tau, \nabla \cdot u - \varepsilon) = 0
 */
 
 
@@ -54,7 +56,7 @@ static PetscErrorCode linear_2d_eps(PetscInt dim, PetscReal time, const PetscRea
 
 static PetscErrorCode linear_2d_p(PetscInt dim, PetscReal time, const PetscReal x[], PetscInt Nc, PetscScalar *u, void *ctx)
 {
-  u[0] = x[0] + x[1];
+  u[0] = (x[0] + x[1])*PetscCosReal(time);
   return 0;
 }
 
@@ -69,7 +71,7 @@ static PetscErrorCode quadratic_3d_u(PetscInt dim, PetscReal time, const PetscRe
 /*
   u = x^2
   v = y^2 - 2xy
-  p = x + y
+  p = (x + y) cos(t)
   e = 2y
   f = <2 G, 4 G + 2 \lambda >
   g = 0
@@ -77,11 +79,11 @@ static PetscErrorCode quadratic_3d_u(PetscInt dim, PetscReal time, const PetscRe
              \ -y   2y - 2x /
   Tr(\epsilon) = e = div u = 2y
   div \sigma = \partial_i 2 G \epsilon_{ij} + \partial_i \lambda \varepsilon \delta_{ij} - \partial_i \alpha p \delta_{ij}
-    = 2 G < 2-1, 2 > + \lambda <0, 2> - alpha <1, 1>
-    = <2 G, 4 G + 2 \lambda> - <alpha, alpha>
+    = 2 G < 2-1, 2 > + \lambda <0, 2> - alpha <t^2, cos(t)>
+    = <2 G, 4 G + 2 \lambda> - <alpha t^2, alpha cos(t()>
   \frac{1}{M} \frac{dp}{dt} + \alpha \frac{d\varepsilon}{dt} - \nabla \cdot \kappa \nabla p
-    = \kappa \Delta p
-    = 0
+    = \frac{1}{M} \frac{dp}{dt} + \kappa \Delta p
+    = -(x + y)/M sin(t)
 
   u = x^2
   v = y^2 - 2xy
@@ -108,8 +110,8 @@ static void f0_quadratic_u(PetscInt dim, PetscInt Nf, PetscInt NfAux,
   const PetscReal lambda = K_d - (2.0 * G) / 3.0;
   PetscInt        d;
 
-  for (d = 0; d < dim-1; ++d) f0[d] -= 2.0*G - alpha;
-  f0[dim-1] -= 2.0*lambda + 4.0*G - alpha;
+  for (d = 0; d < dim-1; ++d) f0[d] -= 2.0*G - alpha*PetscCosReal(t);
+  f0[dim-1] -= 2.0*lambda + 4.0*G - alpha*PetscCosReal(t);
 }
 
 static void f1_u(PetscInt dim, PetscInt Nf, PetscInt NfAux,
@@ -158,6 +160,7 @@ static void f0_p(PetscInt dim, PetscInt Nf, PetscInt NfAux,
 
   f0[0] += u_t ? alpha*u_t[uOff[1]] : 0.0;
   f0[0] += u_t ? u_t[uOff[2]]/M     : 0.0;
+  f0[0] += PetscSinReal(t)*(x[0] + x[1])/M;
 }
 
 static void f1_p(PetscInt dim, PetscInt Nf, PetscInt NfAux,
@@ -466,6 +469,15 @@ PetscErrorCode SetupFE(DM dm, PetscBool simplex, PetscInt Nf, PetscInt Nc[], con
   PetscFunctionReturn(0);
 }
 
+static PetscErrorCode SetInitialConditions(TS ts, Vec u)
+{
+  PetscErrorCode ierr;
+
+  PetscFunctionBegin;
+  ierr = VecSet(u, 0.0);CHKERRQ(ierr);
+  PetscFunctionReturn(0);
+}
+
 int main(int argc, char **argv)
 {
   AppCtx         ctx;       /* User-defined work context */
@@ -501,6 +513,7 @@ int main(int argc, char **argv)
   ierr = TSSetExactFinalTime(ts, TS_EXACTFINALTIME_STEPOVER);CHKERRQ(ierr);
   ierr = TSSetFromOptions(ts);CHKERRQ(ierr);
   ierr = DMTSCheckFromOptions(ts, u, NULL, NULL);CHKERRQ(ierr);
+  ierr = TSSetComputeInitialCondition(ts, SetInitialConditions);CHKERRQ(ierr);
 
   ierr = TSSolve(ts, u);CHKERRQ(ierr);
   ierr = TSGetSolution(ts, &u);CHKERRQ(ierr);
@@ -527,6 +540,5 @@ int main(int argc, char **argv)
     suffix: 2d_p1_quad_tconv
     requires: triangle
     args: -displacement_petscspace_degree 2 -tracestrain_petscspace_degree 1 -pressure_petscspace_degree 1 -dm_refine 2 -convest_num_refine 3 -ts_convergence_estimate -ts_max_steps 5
-  test:
 
 TEST*/
