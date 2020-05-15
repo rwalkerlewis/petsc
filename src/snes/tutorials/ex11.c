@@ -75,7 +75,7 @@ typedef struct {
   PetscBool    simplex;     /* Simplicial mesh */
   /* Problem definition */
   SolutionType solType;     /* Type of exact solution */
-  PetscBag     bag;
+  PetscBag     bag;         /* Problem parameters */
 } AppCtx;
 
 static PetscErrorCode quadratic_2d_u(PetscInt dim, PetscReal time, const PetscReal x[], PetscInt Nc, PetscScalar *u, void *ctx)
