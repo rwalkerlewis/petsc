@@ -196,7 +196,7 @@ PetscErrorCode PetscConvEstComputeError(PetscConvEst ce, PetscInt r, DM dm, Vec 
   PetscFunctionReturn(0);
 }
 
-static PetscErrorCode PetscConvEstMonitor_Private(PetscConvEst ce, PetscInt r)
+PetscErrorCode PetscConvEstMonitorDefault(PetscConvEst ce, PetscInt r)
 {
   MPI_Comm       comm;
   PetscInt       f;
@@ -324,7 +324,7 @@ static PetscErrorCode PetscConvEstGetConvRateSNES_Private(PetscConvEst ce, Petsc
       ierr = PetscLogEventSetError(ce->event, f, ce->errors[r*ce->Nf+f]);CHKERRQ(ierr);
     }
     /* Monitor */
-    ierr = PetscConvEstMonitor_Private(ce, r);CHKERRQ(ierr);
+    ierr = PetscConvEstMonitorDefault(ce, r);CHKERRQ(ierr);
     if (!r) {
       /* PCReset() does not wipe out the level structure */
       KSP ksp;
