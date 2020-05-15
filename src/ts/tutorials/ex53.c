@@ -21,33 +21,23 @@ typedef enum {SOL_QUADRATIC, NUM_SOLUTION_TYPES} SolutionType;
 const char *solutionTypes[NUM_SOLUTION_TYPES+1] = {"quadratic", "unknown"};
 
 typedef struct {
-  PetscScalar mu;     /* shear modulus */
-  PetscScalar rho_f;  /* fluid density */
-  PetscScalar rho_s;  /* rock density */
-  PetscScalar phi;    /* porosity */
-  PetscScalar k;      /* [isotropic] permeability */
-  PetscScalar mu_f;   /* fluid viscosity */
-  PetscScalar K_fl;   /* fluid bulk modulus */
-  PetscScalar K_sg;   /* solid grain bulk modulus */
-  PetscScalar alpha;  /* biot coefficient */
-  PetscScalar nu;     /* drained poisson ratio */
-  PetscScalar E;      /* young's modulus */
+  PetscScalar mu;    /* shear modulus */
+  PetscScalar K_u;   /* undrained bulk modulus */
+  PetscScalar alpha; /* Biot effective stress coefficient */
+  PetscScalar M;     /* Biot modulus */
+  PetscScalar k;     /* (isotropic) permeability */
+  PetscScalar mu_f;  /* fluid dynamic viscosity */
 } Parameter;
 
 typedef struct {
-  char              dmType[256]; /* DM type for the solve */
-  PetscInt          dim;
-  PetscBool         simplex;
-  PetscInt          mms;
+  /* Domain and mesh definition */
+  char         dmType[256]; /* DM type for the solve */
+  PetscInt     dim;         /* The topological mesh dimension */
+  PetscBool    simplex;     /* Simplicial mesh */
   /* Problem definition */
-  SolutionType      solType;     /* Type of exact solution */
-  PetscBag          bag;
-  PetscErrorCode (**exactFuncs)(PetscInt dim, PetscReal time, const PetscReal x[], PetscInt Nf, PetscScalar *u, void *ctx);
+  SolutionType solType;     /* Type of exact solution */
+  PetscBag     bag;         /* Problem parameters */
 } AppCtx;
-
-/* ************************************************************************** */
-
-/* MMS Related */
 
 static PetscErrorCode quadratic_2d_u(PetscInt dim, PetscReal time, const PetscReal x[], PetscInt Nc, PetscScalar *u, void *ctx)
 {
@@ -105,22 +95,17 @@ static PetscErrorCode quadratic_3d_u(PetscInt dim, PetscReal time, const PetscRe
     = \lambda < 0, 0, 2 > + \mu < 2, 2, 4 >
 */
 
-/* ************************************************************************** */
-
-/* Kernel Functions */
-
 static void f0_quadratic_u(PetscInt dim, PetscInt Nf, PetscInt NfAux,
                            const PetscInt uOff[], const PetscInt uOff_x[], const PetscScalar u[], const PetscScalar u_t[], const PetscScalar u_x[],
                            const PetscInt aOff[], const PetscInt aOff_x[], const PetscScalar a[], const PetscScalar a_t[], const PetscScalar a_x[],
                            PetscReal t, const PetscReal x[], PetscInt numConstants, const PetscScalar constants[], PetscScalar f0[])
 {
   const PetscReal G      = constants[0];
-//  const PetscReal K_sg   = constants[7];
-  const PetscReal nu     = constants[9];
-  const PetscReal alpha  = constants[8];
-//  const PetscReal K_dr = K_sg * (1.0 - alpha);
-  const PetscReal lambda = (2.0*G*nu)/(1.0 - 2.0*nu);
-//  const PetscReal lambda = K_dr - (2.0 * G) / 3.0;
+  const PetscReal K_u    = constants[1];
+  const PetscReal alpha  = constants[2];
+  const PetscReal M      = constants[3];
+  const PetscReal K_d    = K_u - alpha*alpha*M;
+  const PetscReal lambda = K_d - (2.0 * G) / 3.0;
   PetscInt        d;
 
   for (d = 0; d < dim-1; ++d) f0[d] -= 2.0*G - alpha;
@@ -134,12 +119,11 @@ static void f1_u(PetscInt dim, PetscInt Nf, PetscInt NfAux,
 {
   const PetscInt  Nc     = dim;
   const PetscReal G      = constants[0];
-  const PetscReal nu     = constants[9];
-//  const PetscReal K_sg   = constants[7];
-  const PetscReal alpha  = constants[8];
-//  const PetscReal K_dr = K_sg * (1.0 - alpha);
-  const PetscReal lambda = (2.0*G*nu)/(1.0 - 2.0*nu);
-//  const PetscReal lambda = K_dr - (2.0 * G) / 3.0;
+  const PetscReal K_u    = constants[1];
+  const PetscReal alpha  = constants[2];
+  const PetscReal M      = constants[3];
+  const PetscReal K_d    = K_u - alpha*alpha*M;
+  const PetscReal lambda = K_d - (2.0 * G) / 3.0;
   PetscInt        c, d;
 
   for (c = 0; c < Nc; ++c) {
@@ -169,11 +153,8 @@ static void f0_p(PetscInt dim, PetscInt Nf, PetscInt NfAux,
                  const PetscInt aOff[], const PetscInt aOff_x[], const PetscScalar a[], const PetscScalar a_t[], const PetscScalar a_x[],
                  PetscReal t, const PetscReal x[], PetscInt numConstants, const PetscScalar constants[], PetscScalar f0[])
 {
-  const PetscReal alpha = constants[0];
-  const PetscReal phi   = constants[3];
-  const PetscReal K_fl  = constants[6];
-  const PetscReal K_sg  = constants[7];
-  const PetscReal M     = 1.0 / ( (alpha - phi)/K_sg + phi/K_fl );
+  const PetscReal alpha  = constants[2];
+  const PetscReal M      = constants[3];
 
   f0[0] += u_t ? alpha*u_t[uOff[1]] : 0.0;
   f0[0] += u_t ? u_t[uOff[2]]/M     : 0.0;
@@ -184,9 +165,7 @@ static void f1_p(PetscInt dim, PetscInt Nf, PetscInt NfAux,
                  const PetscInt aOff[], const PetscInt aOff_x[], const PetscScalar a[], const PetscScalar a_t[], const PetscScalar a_x[],
                  PetscReal t, const PetscReal x[], PetscInt numConstants, const PetscScalar constants[], PetscScalar f1[])
 {
-  const PetscReal k     = constants[4];
-  const PetscReal mu_f  = constants[5];
-  const PetscReal kappa = k / mu_f;
+  const PetscReal kappa = constants[4];
   PetscInt        d;
 
   for (d = 0; d < dim; ++d) {
@@ -223,13 +202,11 @@ static void g2_ue(PetscInt dim, PetscInt Nf, PetscInt NfAux,
                   PetscReal t, PetscReal u_tShift, const PetscReal x[], PetscInt numConstants, const PetscScalar constants[], PetscScalar g2[])
 {
   const PetscReal G      = constants[0];
-//  const PetscReal K_sg   = constants[7];
-  const PetscReal nu     = constants[9];
-//  const PetscReal alpha  = constants[8];
-//  const PetscReal K_dr = K_sg * (1.0 - alpha);
-  const PetscReal lambda = (2.0*G*nu)/(1.0 - 2.0*nu);
-//  const PetscReal lambda = K_dr - (2.0 * G) / 3.0;
-
+  const PetscReal K_u    = constants[1];
+  const PetscReal alpha  = constants[2];
+  const PetscReal M      = constants[3];
+  const PetscReal K_d    = K_u - alpha*alpha*M;
+  const PetscReal lambda = K_d - (2.0 * G) / 3.0;
   PetscInt        d;
 
   for (d = 0; d < dim; ++d) {
@@ -242,7 +219,7 @@ static void g2_up(PetscInt dim, PetscInt Nf, PetscInt NfAux,
                   const PetscInt aOff[], const PetscInt aOff_x[], const PetscScalar a[], const PetscScalar a_t[], const PetscScalar a_x[],
                   PetscReal t, PetscReal u_tShift, const PetscReal x[], PetscInt numConstants, const PetscScalar constants[], PetscScalar g2[])
 {
-  const PetscReal alpha = constants[8];
+  const PetscReal alpha = constants[2];
   PetscInt        d;
 
   for (d = 0; d < dim; ++d) {
@@ -269,22 +246,38 @@ static void g0_ee(PetscInt dim, PetscInt Nf, PetscInt NfAux,
   g0[0] = -1.0;
 }
 
+static void g0_pe(PetscInt dim, PetscInt Nf, PetscInt NfAux,
+           const PetscInt uOff[], const PetscInt uOff_x[], const PetscScalar u[], const PetscScalar u_t[], const PetscScalar u_x[],
+           const PetscInt aOff[], const PetscInt aOff_x[], const PetscScalar a[], const PetscScalar a_t[], const PetscScalar a_x[],
+           PetscReal t, PetscReal u_tShift, const PetscReal x[], PetscInt numConstants, const PetscScalar constants[], PetscScalar g0[])
+{
+  const PetscReal alpha  = constants[2];
+
+  g0[0] = u_tShift*alpha;
+}
+
+static void g0_pp(PetscInt dim, PetscInt Nf, PetscInt NfAux,
+                  const PetscInt uOff[], const PetscInt uOff_x[], const PetscScalar u[], const PetscScalar u_t[], const PetscScalar u_x[],
+                  const PetscInt aOff[], const PetscInt aOff_x[], const PetscScalar a[], const PetscScalar a_t[], const PetscScalar a_x[],
+                  PetscReal t, PetscReal u_tShift, const PetscReal x[], PetscInt numConstants, const PetscScalar constants[], PetscScalar g0[])
+{
+  const PetscReal M = constants[3];
+
+  g0[0] = u_tShift/M;
+}
+
 static void g3_pp(PetscInt dim, PetscInt Nf, PetscInt NfAux,
                   const PetscInt uOff[], const PetscInt uOff_x[], const PetscScalar u[], const PetscScalar u_t[], const PetscScalar u_x[],
                   const PetscInt aOff[], const PetscInt aOff_x[], const PetscScalar a[], const PetscScalar a_t[], const PetscScalar a_x[],
                   PetscReal t, PetscReal u_tShift, const PetscReal x[], PetscInt numConstants, const PetscScalar constants[], PetscScalar g3[])
 {
-  const PetscReal k     = constants[4];
-  const PetscReal mu_f  = constants[5];
-  const PetscReal kappa = k / mu_f;
+  const PetscReal kappa = constants[4];
   PetscInt        d;
 
   for (d = 0; d < dim; ++d) g3[d*dim+d] = kappa;
 }
 
-/*============================================================================*/
 static PetscErrorCode ProcessOptions(MPI_Comm comm, AppCtx *options)
-/* -------------------------------------------------------------------------- */
 {
   PetscInt sol;
   PetscErrorCode ierr;
@@ -292,12 +285,12 @@ static PetscErrorCode ProcessOptions(MPI_Comm comm, AppCtx *options)
   PetscFunctionBeginUser;
   options->dim     = 2;
   options->simplex = PETSC_TRUE;
-  options->mms     = 1;
+  options->solType = SOL_QUADRATIC;
+  ierr = PetscStrncpy(options->dmType, DMPLEX, 256);CHKERRQ(ierr);
 
   ierr = PetscOptionsBegin(comm, "", "Biot Poroelasticity Options", "DMPLEX");CHKERRQ(ierr);
   ierr = PetscOptionsInt("-dim", "The topological mesh dimension", "ex53.c", options->dim, &options->dim, NULL);CHKERRQ(ierr);
   ierr = PetscOptionsBool("-simplex", "Simplicial (true) or tensor (false) mesh", "ex53.c", options->simplex, &options->simplex, NULL);CHKERRQ(ierr);
-  ierr = PetscOptionsInt("-mms", "The manufactured solution to use", "ex53.c", options->mms, &options->mms, NULL);CHKERRQ(ierr);
   sol  = options->solType;
   ierr = PetscOptionsEList("-sol_type", "Type of exact solution", "ex53.c", solutionTypes, NUM_SOLUTION_TYPES, solutionTypes[options->solType], &sol, NULL);CHKERRQ(ierr);
   options->solType = (SolutionType) sol;
@@ -306,11 +299,7 @@ static PetscErrorCode ProcessOptions(MPI_Comm comm, AppCtx *options)
   PetscFunctionReturn(0);
 }
 
-/* -------------------------------------------------------------------------- */
-
-/*============================================================================*/
 static PetscErrorCode SetupParameters(AppCtx *ctx)
-/* -------------------------------------------------------------------------- */
 {
   PetscBag       bag;
   Parameter     *p;
@@ -321,31 +310,16 @@ static PetscErrorCode SetupParameters(AppCtx *ctx)
   ierr = PetscBagGetData(ctx->bag,(void**)&p);CHKERRQ(ierr);
   ierr = PetscBagSetName(ctx->bag,"par","Poroelastic Parameters");CHKERRQ(ierr);
   bag  = ctx->bag;
-  ierr = PetscBagRegisterScalar(bag, &p->mu,     1.0,              "mu",      "Shear Modulus, Pa");CHKERRQ(ierr);
-  ierr = PetscBagRegisterScalar(bag, &p->rho_f,  2700.0,           "rho_f",   "Fluid Density, kg / m**3");CHKERRQ(ierr);
-  ierr = PetscBagRegisterScalar(bag, &p->rho_s,  1000.0,           "rho_s",   "Solid Density, kg / m**3");CHKERRQ(ierr);
-  ierr = PetscBagRegisterScalar(bag, &p->phi,    0.1,              "phi",     "Porosity, frac");CHKERRQ(ierr);
-  ierr = PetscBagRegisterScalar(bag, &p->k,      0.001,            "k",       "Isotropic Permeability, m**2");CHKERRQ(ierr);  
-  ierr = PetscBagRegisterScalar(bag, &p->mu_f,   0.001,            "mu_f",    "Fluid Viscosity, Pa*s");CHKERRQ(ierr);  
-  ierr = PetscBagRegisterScalar(bag, &p->K_fl,   1.0 ,             "K_fl",    "Fluid Bulk Modulus, Pa");CHKERRQ(ierr);  
-  ierr = PetscBagRegisterScalar(bag, &p->K_sg,   1.0 ,             "K_sg",    "Solid Bulk Modulus, Pa");CHKERRQ(ierr);
-  ierr = PetscBagRegisterScalar(bag, &p->alpha,  1.0 ,             "alpha",   "Biot Coefficient");CHKERRQ(ierr);
-  ierr = PetscBagRegisterScalar(bag, &p->nu,     0.25,             "nu",      "Drained Poisson's Ratio, -");CHKERRQ(ierr);
-  ierr = PetscBagRegisterScalar(bag, &p->E,      1.0,              "E",       "Young's Modulus, Pa");CHKERRQ(ierr);
-/*  ierr = PetscBagRegisterScalar(bag, &p->grav,   9.80665,          "g",       "Accel. Gravity, m / s**2");CHKERRQ(ierr);*/
-/*  ierr = PetscBagRegisterScalar(bag, &p->lambda, 6.5E10,           "lambda",  "Lame #1, Pa");CHKERRQ(ierr);*/
-
-/*  ierr = PetscBagRegisterScalar(bag, &p->xi,     0.0 ,             "xi",      "Variation in Fluid Content");CHKERRQ(ierr);  */
-/*  ierr = PetscBagRegisterScalar(bag, &p->source, 0.0 ,             "source",  "Fluid Source Term");CHKERRQ(ierr);  */
-/*  ierr = PetscRandomCreate(PETSC_COMM_SELF, &p->random);CHKERRQ(ierr);*/
+  ierr = PetscBagRegisterScalar(bag, &p->mu,    1.0, "mu",    "Shear Modulus, Pa");CHKERRQ(ierr);
+  ierr = PetscBagRegisterScalar(bag, &p->K_u,   1.0, "K_u",   "Undrained Bulk Modulus, Pa");CHKERRQ(ierr);
+  ierr = PetscBagRegisterScalar(bag, &p->alpha, 1.0, "alpha", "Biot Effective Stress Coefficient");CHKERRQ(ierr);
+  ierr = PetscBagRegisterScalar(bag, &p->M,     1.0, "M",     "Biot Modulus");CHKERRQ(ierr);
+  ierr = PetscBagRegisterScalar(bag, &p->k,     1.0, "k",     "Isotropic Permeability, m**2");CHKERRQ(ierr);
+  ierr = PetscBagRegisterScalar(bag, &p->mu_f,  1.0, "mu_f",  "Fluid Dynamic Viscosity, Pa*s");CHKERRQ(ierr);
   PetscFunctionReturn(0);
 }
 
-/*---------------------------------------------------------------------*/
-
-/*============================================================================*/
 static PetscErrorCode CreateMesh(MPI_Comm comm, AppCtx *user, DM *dm)
-/* -------------------------------------------------------------------------- */
 {
   PetscBool      flg;
   PetscErrorCode ierr;
@@ -379,18 +353,10 @@ static PetscErrorCode CreateMesh(MPI_Comm comm, AppCtx *user, DM *dm)
   ierr = DMSetApplicationContext(*dm, user);CHKERRQ(ierr);
   ierr = DMSetFromOptions(*dm);CHKERRQ(ierr);
   ierr = DMViewFromOptions(*dm, NULL, "-dm_view");CHKERRQ(ierr);
-
-  /* Setup Problem Parameters */
-  ierr = PetscBagCreate(comm, sizeof(Parameter), &user->bag);CHKERRQ(ierr);
-  ierr = SetupParameters(user);CHKERRQ(ierr);
-
   PetscFunctionReturn(0);
 }
-/* -------------------------------------------------------------------------- */
 
-/*============================================================================*/
 static PetscErrorCode SetupPrimalProblem(DM dm, AppCtx *user)
-/* -------------------------------------------------------------------------- */
 {
   PetscErrorCode (*exact[3])(PetscInt, PetscReal, const PetscReal[], PetscInt, PetscScalar *, void *);
   PetscDS        prob;
@@ -411,7 +377,8 @@ static PetscErrorCode SetupPrimalProblem(DM dm, AppCtx *user)
     ierr = PetscDSSetJacobian(prob, 0, 2, NULL,  NULL,  g2_up, NULL);CHKERRQ(ierr);
     ierr = PetscDSSetJacobian(prob, 1, 0, NULL,  g1_eu, NULL,  NULL);CHKERRQ(ierr);
     ierr = PetscDSSetJacobian(prob, 1, 1, g0_ee, NULL,  NULL,  NULL);CHKERRQ(ierr);
-    ierr = PetscDSSetJacobian(prob, 2, 2, NULL,  NULL,  NULL,  g3_pp);CHKERRQ(ierr);
+    ierr = PetscDSSetJacobian(prob, 2, 1, g0_pe,  NULL,  NULL,  NULL);CHKERRQ(ierr);
+    ierr = PetscDSSetJacobian(prob, 2, 2, g0_pp,  NULL,  NULL,  g3_pp);CHKERRQ(ierr);
     switch (dim) {
     case 2:
       exact[0] = quadratic_2d_u;
@@ -442,30 +409,21 @@ static PetscErrorCode SetupPrimalProblem(DM dm, AppCtx *user)
   /* Setup constants */
   {
     Parameter  *param;
-    PetscScalar constants[10];
+    PetscScalar constants[5];
 
     ierr = PetscBagGetData(user->bag, (void **) &param);CHKERRQ(ierr);
 
-    constants[0] = param->mu;     /* shear modulus */
-    constants[1] = param->rho_f;  /* fluid density */
-    constants[2] = param->rho_s;  /* rock density */
-    constants[3] = param->phi;    /* porosity */
-    constants[4] = param->k;      /* [isotropic] permeability */
-    constants[5] = param->mu_f;   /* fluid viscosity */
-    constants[6] = param->K_fl;   /* fluid bulk modulus */
-    constants[7] = param->K_sg;   /* solid grain bulk modulus */
-    constants[8] = param->alpha;  /* biot coefficient */
-    constants[9] = param->nu;     /* drained poisson ratio */
-    ierr = PetscDSSetConstants(prob, 10, constants);CHKERRQ(ierr);
+    constants[0] = param->mu;            /* shear modulus */
+    constants[1] = param->K_u;           /* undrained bulk modulus */
+    constants[2] = param->alpha;         /* Biot effective stress coefficient */
+    constants[3] = param->M;             /* Biot modulus */
+    constants[4] = param->k/param->mu_f; /* Darcy coefficient */
+    ierr = PetscDSSetConstants(prob, 5, constants);CHKERRQ(ierr);
   }
   PetscFunctionReturn(0);
 }
 
-/* -------------------------------------------------------------------------- */
-
-/*============================================================================*/
 static PetscErrorCode CreateElasticityNullSpace(DM dm, PetscInt dummy, MatNullSpace *nullspace)
-/* -------------------------------------------------------------------------- */
 {
   PetscErrorCode ierr;
 
@@ -474,11 +432,7 @@ static PetscErrorCode CreateElasticityNullSpace(DM dm, PetscInt dummy, MatNullSp
   PetscFunctionReturn(0);
 }
 
-/* -------------------------------------------------------------------------- */
-
-/*============================================================================*/
 PetscErrorCode SetupFE(DM dm, PetscBool simplex, PetscInt Nf, PetscInt Nc[], const char *name[], PetscErrorCode (*setup)(DM, AppCtx *), void *ctx)
-/* -------------------------------------------------------------------------- */
 {
   AppCtx         *user = (AppCtx *) ctx;
   DM              cdm  = dm;
@@ -512,12 +466,8 @@ PetscErrorCode SetupFE(DM dm, PetscBool simplex, PetscInt Nf, PetscInt Nc[], con
   PetscFunctionReturn(0);
 }
 
-/* -------------------------------------------------------------------------- */
-
-/*============================================================================*/
 int main(int argc, char **argv)
 {
-/* -------------------------------------------------------------------------- */
   AppCtx         ctx;       /* User-defined work context */
   DM             dm;        /* Problem specification */
   TS             ts;        /* Time Series / Nonlinear solver */
@@ -528,7 +478,8 @@ int main(int argc, char **argv)
 
   ierr = PetscInitialize(&argc, &argv, NULL, help);if (ierr) return ierr;
   ierr = ProcessOptions(PETSC_COMM_WORLD, &ctx);CHKERRQ(ierr);
-  
+  ierr = PetscBagCreate(PETSC_COMM_SELF, sizeof(Parameter), &ctx.bag);CHKERRQ(ierr);
+  ierr = SetupParameters(&ctx);CHKERRQ(ierr);
   /* Primal System */
   ierr = TSCreate(PETSC_COMM_WORLD, &ts);CHKERRQ(ierr);
   ierr = CreateMesh(PETSC_COMM_WORLD, &ctx, &dm);CHKERRQ(ierr);
@@ -559,6 +510,7 @@ int main(int argc, char **argv)
   ierr = VecDestroy(&u);CHKERRQ(ierr);
   ierr = TSDestroy(&ts);CHKERRQ(ierr);
   ierr = DMDestroy(&dm);CHKERRQ(ierr);
+  ierr = PetscBagDestroy(&ctx.bag);CHKERRQ(ierr);
   ierr = PetscFinalize();
   return ierr;
 }
@@ -569,11 +521,12 @@ int main(int argc, char **argv)
   test:
     suffix: 2d_p1_quad
     requires: triangle
-    args: -ts_max_steps 5 -displacement_petscspace_degree 2 -tracestrain_petscspace_degree 1 -pressure_petscspace_degree 1 -dm_refine 2 -dmsnes_check .0001 -snes_monitor_short -snes_converged_reason -ts_monitor
+    args: -displacement_petscspace_degree 2 -tracestrain_petscspace_degree 1 -pressure_petscspace_degree 1 -dm_refine 2 -dmts_check .0001 -ts_max_steps 5
+
   test:
-    suffix: 2d_p1_trig
+    suffix: 2d_p1_quad_tconv
     requires: triangle
-    args: -ts_max_steps 5 -displacement_petscspace_degree 2 -tracestrain_petscspace_degree 1 -pressure_petscspace_degree 1 -dm_refine 2 -convest_num_refine 3 -snes_convergence_estimate -ts_monitor
+    args: -displacement_petscspace_degree 2 -tracestrain_petscspace_degree 1 -pressure_petscspace_degree 1 -dm_refine 2 -convest_num_refine 3 -ts_convergence_estimate -ts_max_steps 5
   test:
 
 TEST*/
