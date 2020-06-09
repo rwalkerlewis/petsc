@@ -20,7 +20,7 @@ The weak form would then be, using test function $(v, q, \tau)$,
 
 
 typedef enum {SOL_QUADRATIC, SOL_TERZAGHI, NUM_SOLUTION_TYPES} SolutionType;
-const char *solutionTypes[NUM_SOLUTION_TYPES+1] = {"quadratic", "unknown"};
+const char *solutionTypes[NUM_SOLUTION_TYPES+1] = {"quadratic", "terzaghi", "unknown"};
 
 typedef struct {
   PetscScalar mu;    /* shear modulus */
@@ -57,10 +57,11 @@ static PetscErrorCode zero(PetscInt dim, PetscReal time, const PetscReal x[], Pe
 static PetscErrorCode vertical_stress_2d(PetscInt dim, PetscReal time, const PetscReal x[], PetscInt Nc, PetscScalar *u, void *ctx)
 {
   Parameter  *param;
-  PetscBag       bag;
   PetscErrorCode ierr;
 
-  ierr = PetscBagGetData(ctx->bag, (void **) &param);CHKERRQ(ierr);
+  AppCtx *user = (AppCtx *) ctx;
+
+  ierr = PetscBagGetData(user->bag, (void **) &param);CHKERRQ(ierr);
   const PetscScalar P = param->P_0;
 
   //PetscInt d;
@@ -105,13 +106,13 @@ static PetscErrorCode terzaghi_2d_u(PetscInt dim, PetscReal time, const PetscRea
 {
 
   Parameter  *param;
-  PetscBag       bag;
   PetscErrorCode ierr;
 
-  ierr = PetscBagGetData(ctx->bag, (void **) &param);CHKERRQ(ierr);
+  AppCtx *user = (AppCtx *) ctx;
 
-  const PetscInt NITER = ctx->niter;
-  const PetscScalar PI = ctx->pi;
+  ierr = PetscBagGetData(user->bag, (void **) &param);CHKERRQ(ierr);
+  const PetscInt NITER = user->niter;
+  const PetscScalar PI = user->pi;
 
   const PetscScalar YMAX = param->ymax;
   const PetscScalar YMIN = param->ymin;
@@ -124,16 +125,15 @@ static PetscErrorCode terzaghi_2d_u(PetscInt dim, PetscReal time, const PetscRea
   const PetscScalar P_0 = param->P_0;
 
   const PetscScalar K_d    = K_u - alpha*alpha*M;
-  const PetscScalar nu = (3.0*K_d - 2.0*G) / (2.0*(3.0*K_d + G ));
-  const PetscScalar nu_u = (3.0*K_u - 2.0*G) / (2.0*(3.0*K_u + G ));
-  const PetscScalar kappa = k / mu_f;
+  const PetscScalar nu = (3.0*K_d - 2.0*G) / (2.0*(3.0*K_d + G )); /* - */
+  const PetscScalar nu_u = (3.0*K_u - 2.0*G) / (2.0*(3.0*K_u + G )); /* - */
+  const PetscScalar kappa = k / mu_f; /* m**2 / Pa*s */
 
   const PetscScalar L = YMAX - YMIN;
 
-  const PetscScalar eta = ( alpha * (1.0 - 2.0*nu) ) / ( 2.0*(1.0 - nu) );
-  const PetscScalar c = ( (2.0*kappa*G) * (1.0 - nu) ) / (1.0 - 2.0*nu);
+  const PetscScalar c = ( (2.0*kappa*G) * (1.0 - nu) * (nu_u - nu) ) / ( alpha*alpha * (1.0 - 2.0*nu) * (1.0 - nu_u) ); /* m**2 / s */
   const PetscScalar zstar = x[1] / L; /* m / m */
-  const PetscScalar tstar = (c*time) / (4.0*L*L);
+  const PetscScalar tstar = (c*time) / (4.0*L*L); /* m**2 * s / m**2 * s */
 
   // Series Term
 
@@ -145,7 +145,7 @@ static PetscErrorCode terzaghi_2d_u(PetscInt dim, PetscReal time, const PetscRea
   }
 
   u[0] = 0.0;
-  u[1] = ( ( P_0*L*(1.0 - 2.0*nu_u) ) / ( 2.0*G*(1.0-nu_u) ) ) * (1.0 - zstar) + ( ( P_0*L*(nu_u - nu) ) / ( 2.0*G*(1.0-nu_u)*(1.0-nu) ) )*F2;
+  u[1] = ( ( P_0*L*(1.0 - 2.0*nu_u) ) / ( 2.0*G*(1.0-nu_u) ) ) * (1.0 - zstar) + ( ( P_0*L*(nu_u - nu) ) / ( 2.0*G*(1.0-nu_u)*(1.0-nu) ) )*F2; /* m */
   return 0;
 }
 
@@ -154,13 +154,14 @@ static PetscErrorCode terzaghi_2d_p(PetscInt dim, PetscReal time, const PetscRea
 {
 
   Parameter  *param;
-  PetscBag       bag;
   PetscErrorCode ierr;
 
-  ierr = PetscBagGetData(ctx->bag, (void **) &param);CHKERRQ(ierr);
+  AppCtx *user = (AppCtx *) ctx;
 
-  const PetscInt NITER = ctx->niter;
-  const PetscScalar PI = ctx->pi;
+  ierr = PetscBagGetData(user->bag, (void **) &param);CHKERRQ(ierr);
+
+  const PetscInt NITER = user->niter;
+  const PetscScalar PI = user->pi;
 
   const PetscScalar YMAX = param->ymax;
   const PetscScalar YMIN = param->ymin;
@@ -174,15 +175,15 @@ static PetscErrorCode terzaghi_2d_p(PetscInt dim, PetscReal time, const PetscRea
 
   const PetscScalar K_d = K_u - alpha*alpha*M;
   const PetscScalar nu = (3.0*K_d - 2.0*G) / (2.0*(3.0*K_d + G ));
-  const PetscScalar nu_u = (3.0*K_u - 2.0*G) / (2.0*(3.0*K_u + G ));
+  const PetscScalar nu_u = (3.0*K_u - 2.0*G) / (2.0*(3.0*K_u + G )); /* - */
   const PetscScalar kappa = k / mu_f;
-  const PetscScalar S = (3.0*K_u + 4.0*G) / (M*(3.0*K_d + 4.0*G));
+  const PetscScalar S = (3.0*K_u + 4.0*G) / (M*(3.0*K_d + 4.0*G)); /* 1 / Pa */
 
   const PetscScalar L = YMAX - YMIN;
   const PetscScalar eta = ( alpha * (1.0 - 2.0*nu) ) / ( 2.0*(1.0 - nu) );
-  const PetscScalar c = ( (2.0*kappa*G) * (1.0 - nu) ) / (1.0 - 2.0*nu);
+  const PetscScalar c = ( (2.0*kappa*G) * (1.0 - nu) * (nu_u - nu) ) / ( alpha*alpha * (1.0 - 2.0*nu) * (1.0 - nu_u) ); /* m**2 / s */
   const PetscScalar zstar = x[1] / L; /* m / m */
-  const PetscScalar tstar = (c*time) / (4.0*L*L);
+  const PetscScalar tstar = (c*time) / (4.0*L*L); /* m**2 * s / m**2 * s */
 
   // Series term
 
@@ -193,7 +194,7 @@ static PetscErrorCode terzaghi_2d_p(PetscInt dim, PetscReal time, const PetscRea
     }
   }
 
-  u[0] = ( (P_0*eta)/(G*S) )*F1;
+  u[0] = ( (P_0*eta)/(G*S) )*F1; /* Pa */
   return 0;
 }
 
@@ -204,17 +205,17 @@ static PetscErrorCode terzaghi_2d_eps(PetscInt dim, PetscReal time, const PetscR
 {
 
   Parameter  *param;
-  PetscBag       bag;
   PetscErrorCode ierr;
 
-  ierr = PetscBagGetData(ctx->bag, (void **) &param);CHKERRQ(ierr);
+  AppCtx *user = (AppCtx *) ctx;
 
-  const PetscInt NITER = ctx->niter;
-  const PetscScalar PI = ctx->pi;
+  ierr = PetscBagGetData(user->bag, (void **) &param);CHKERRQ(ierr);
+
+  const PetscInt NITER = user->niter;
+  const PetscScalar PI = user->pi;
 
   const PetscScalar YMAX = param->ymax;
   const PetscScalar YMIN = param->ymin;
-  const PetscScalar PI = param->pi;
   const PetscScalar alpha = param->alpha;
   const PetscScalar K_u = param->K_u;
   const PetscScalar M = param->M;
@@ -227,11 +228,9 @@ static PetscErrorCode terzaghi_2d_eps(PetscInt dim, PetscReal time, const PetscR
   const PetscScalar nu = (3.0*K_d - 2.0*G) / (2.0*(3.0*K_d + G ));
   const PetscScalar nu_u = (3.0*K_u - 2.0*G) / (2.0*(3.0*K_u + G ));
   const PetscScalar kappa = k / mu_f;
-  const PetscScalar S = (3.0*K_u + 4.0*G) / (M*(3.0*K_d + 4.0*G));
 
   const PetscScalar L = YMAX - YMIN;
-  const PetscScalar eta = ( alpha * (1.0 - 2.0*nu) ) / ( 2.0*(1.0 - nu) );
-  const PetscScalar c = ( (2.0*kappa*G) * (1.0 - nu) ) / (1.0 - 2.0*nu);
+  const PetscScalar c = ( (2.0*kappa*G) * (1.0 - nu) * (nu_u - nu) ) / ( alpha*alpha * (1.0 - 2.0*nu) * (1.0 - nu_u) );
   const PetscScalar zstar = x[1] / L; /* m / m */
   const PetscScalar tstar = (c*time) / (4.0*L*L);
 
@@ -296,19 +295,6 @@ static void f0_quadratic_u(PetscInt dim, PetscInt Nf, PetscInt NfAux,
 
   for (d = 0; d < dim-1; ++d) f0[d] -= 2.0*G - alpha*PetscCosReal(t);
   f0[dim-1] -= 2.0*lambda + 4.0*G - alpha*PetscCosReal(t);
-}
-
-static void f0_quadratic_p(PetscInt dim, PetscInt Nf, PetscInt NfAux,
-                 const PetscInt uOff[], const PetscInt uOff_x[], const PetscScalar u[], const PetscScalar u_t[], const PetscScalar u_x[],
-                 const PetscInt aOff[], const PetscInt aOff_x[], const PetscScalar a[], const PetscScalar a_t[], const PetscScalar a_x[],
-                 PetscReal t, const PetscReal x[], PetscInt numConstants, const PetscScalar constants[], PetscScalar f0[])
-{
-  const PetscReal alpha  = constants[2];
-  const PetscReal M      = constants[3];
-
-  f0[0] += u_t ? alpha*u_t[uOff[1]] : 0.0;
-  f0[0] += u_t ? u_t[uOff[2]]/M     : 0.0;
-  f0[0] += PetscSinReal(t)*(x[0] + x[1])/M;
 }
 
 static void f0_linear_p(PetscInt dim, PetscInt Nf, PetscInt NfAux,
@@ -659,7 +645,7 @@ static PetscErrorCode SetupPrimalProblem(DM dm, AppCtx *user)
     ierr = PetscDSSetJacobian(prob, 2, 1, g0_pe,  NULL,  NULL,  NULL);CHKERRQ(ierr);
     ierr = PetscDSSetJacobian(prob, 2, 2, g0_pp,  NULL,  NULL,  g3_pp);CHKERRQ(ierr);
 
-    ierr = PetscDSSetBdResidual(prob, 1, f0_terzaghi_bd_u, NULL);CHKERRQ(ierr);
+    ierr = PetscDSSetBdResidual(prob, 0, f0_terzaghi_bd_u, NULL);CHKERRQ(ierr);
 
     exact[0] = terzaghi_2d_u;
     exact[1] = terzaghi_2d_eps;
@@ -676,10 +662,12 @@ static PetscErrorCode SetupPrimalProblem(DM dm, AppCtx *user)
   /* Setup Boundary Conditions */
   if (user->solType == SOL_TERZAGHI) {
     id = 3;
-    ierr = DMAddBoundary(dm, DM_BC_NATURAL, "vertical stress", "marker", 0, 1, 1, (void (*)(void)) vertical_stress_2d, 1, &id, user);CHKERRQ(ierr);
+    PetscInt comps[1];
+    comps[0] = 1;
+    ierr = DMAddBoundary(dm, DM_BC_NATURAL, "vertical stress", "marker", 0, 1, comps, (void (*)(void)) vertical_stress_2d, 1, &id, user);CHKERRQ(ierr);
     ierr = DMAddBoundary(dm, DM_BC_ESSENTIAL, "drained surface", "marker", 2, 0, NULL, (void (*)(void)) zero, 1, &id, user);CHKERRQ(ierr);
     id = 1;
-    ierr = DMAddBoundary(dm, DM_BC_ESSENTIAL, "fixed base", "marker", 0, 1, 1, (void (*)(void)) zero, 1, &id, user);CHKERRQ(ierr);
+    ierr = DMAddBoundary(dm, DM_BC_ESSENTIAL, "fixed base", "marker", 0, 1, comps, (void (*)(void)) zero, 1, &id, user);CHKERRQ(ierr);
 
   } else {
     id = 1;
@@ -690,7 +678,7 @@ static PetscErrorCode SetupPrimalProblem(DM dm, AppCtx *user)
   /* Setup constants */
   {
     Parameter  *param;
-    PetscScalar constants[5];
+    PetscScalar constants[6];
 
     ierr = PetscBagGetData(user->bag, (void **) &param);CHKERRQ(ierr);
 
@@ -700,7 +688,7 @@ static PetscErrorCode SetupPrimalProblem(DM dm, AppCtx *user)
     constants[3] = param->M;             /* Biot modulus */
     constants[4] = param->k/param->mu_f; /* Darcy coefficient */
     constants[5] = param->P_0;           /* Magnitude of Vertical Stress */
-    ierr = PetscDSSetConstants(prob, 5, constants);CHKERRQ(ierr);
+    ierr = PetscDSSetConstants(prob, 6, constants);CHKERRQ(ierr);
   }
   PetscFunctionReturn(0);
 }
@@ -814,6 +802,11 @@ int main(int argc, char **argv)
     suffix: 2d_p1_quad
     requires: triangle
     args: -displacement_petscspace_degree 2 -tracestrain_petscspace_degree 1 -pressure_petscspace_degree 1 -dm_refine 2 -dmts_check .0001 -ts_max_steps 5
+
+  test:
+    suffix: 2d_p1_quad_terzaghi
+    requires: triangle
+    args: --sol_type terzaghi -dm_plex_separate_marker -displacement_petscspace_degree 2 -tracestrain_petscspace_degree 1 -pressure_petscspace_degree 1 -dm_refine 2 -dmts_check .0001 -ts_max_steps 5  -ts_convergence_estimate
 
   test:
     suffix: 2d_p1_quad_tconv
