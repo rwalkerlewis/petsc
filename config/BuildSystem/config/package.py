@@ -83,7 +83,6 @@ class Package(config.base.Configure):
     self.requires32bitintblas   = 1  # 1 means that the package will not work with 64 bit integer BLAS/LAPACK
     self.skippackagewithoptions = 0  # packages like fblaslapack and MPICH do not support --with-package* options so do not print them in help
     self.alternativedownload    = [] # Used by, for example mpi.py to print useful error messages, which does not support --download-mpi but one can use --download-mpich
-    self.requirec99flag         = 0  # package must be compiled with C99 flags
     self.usesopenmp             = 'no'  # yes, no, unknow package is built to use OpenMP
 
     # Outside coupling
@@ -143,7 +142,7 @@ class Package(config.base.Configure):
       self.petscdir        = FakePETScDir()
     # All packages depend on make
     self.make          = framework.require('config.packages.make',self)
-    if not self.isMPI and not self.package == 'make':
+    if not self.isMPI and not self.package in ['make','cuda']:
       # force MPI to be the first package configured since all other packages
       # may depend on its compilers defined here
       self.mpi         = framework.require('config.packages.MPI',self)
@@ -169,6 +168,7 @@ class Package(config.base.Configure):
     name:         The module name (usually the filename)
     package:      The lowercase name
     PACKAGE:      The uppercase name
+    pkgname:      The name of pkg-config (.pc) file
     downloadname:     Name for download option (usually name)
     downloaddirnames: names for downloaded directory (first part of string) (usually downloadname)
     '''
@@ -179,8 +179,8 @@ class Package(config.base.Configure):
       self.name           = 'DEBUGGING'
     self.PACKAGE          = self.name.upper()
     self.package          = self.name.lower()
+    self.pkgname          = self.package
     self.downloadname     = self.name
-    self.pkgname          = self.name
     self.downloaddirnames = [self.downloadname];
     return
 
@@ -1086,6 +1086,8 @@ If its a remote branch, use: origin/'+self.gitcommit+' for commit.')
   def configure(self):
     if hasattr(self, 'download_solaris') and config.setCompilers.Configure.isSolaris(self.log):
       self.download = self.download_solaris
+    if hasattr(self, 'download_darwin') and config.setCompilers.Configure.isDarwin(self.log):
+      self.download = self.download_darwin
     if self.download and self.argDB['download-'+self.downloadname.lower()] and (not self.framework.batchBodies or self.installwithbatch):
       self.argDB['with-'+self.package] = 1
       downloadPackageVal = self.argDB['download-'+self.downloadname.lower()]
@@ -1673,10 +1675,6 @@ class CMakePackage(Package):
     ranlib = shlex.split(self.setCompilers.RANLIB)[0]
     args.append('-DCMAKE_RANLIB='+ranlib)
     cflags = self.removeWarningFlags(self.setCompilers.getCompilerFlags())
-    if self.requirec99flag:
-      if (self.compilers.c99flag == None):
-        raise RuntimeError('Requires c99 compiler. Configure cold not determine compatible compiler flag. Perhaps you can specify via CFLAG')
-      cflags += ' '+self.compilers.c99flag
     args.append('-DCMAKE_C_FLAGS:STRING="'+cflags+'"')
     args.append('-DCMAKE_C_FLAGS_DEBUG:STRING="'+cflags+'"')
     args.append('-DCMAKE_C_FLAGS_RELEASE:STRING="'+cflags+'"')

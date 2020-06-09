@@ -30,8 +30,13 @@ PETSC_INTERN PetscErrorCode PetscSequentialPhaseBegin_Private(MPI_Comm,int);
 PETSC_INTERN PetscErrorCode PetscSequentialPhaseEnd_Private(MPI_Comm,int);
 PETSC_INTERN PetscErrorCode PetscCloseHistoryFile(FILE**);
 
-/* user may set this BEFORE calling PetscInitialize() */
+/* user may set these BEFORE calling PetscInitialize() */
 MPI_Comm PETSC_COMM_WORLD = MPI_COMM_NULL;
+#if defined(PETSC_HAVE_MPI_INIT_THREAD)
+PetscMPIInt PETSC_MPI_THREAD_REQUIRED = MPI_THREAD_FUNNELED;
+#else
+PetscMPIInt PETSC_MPI_THREAD_REQUIRED = 0;
+#endif
 
 PetscMPIInt Petsc_Counter_keyval   = MPI_KEYVAL_INVALID;
 PetscMPIInt Petsc_InnerComm_keyval = MPI_KEYVAL_INVALID;
@@ -728,6 +733,8 @@ PetscInt PetscNumOMPThreads;
 +   PETSC_TMP - alternative tmp directory
 .   PETSC_SHARED_TMP - tmp is shared by all processes
 .   PETSC_NOT_SHARED_TMP - each process has its own private tmp
+.   PETSC_OPTIONS - a string containing additional options for petsc in the form of command line "-key value" pairs
+.   PETSC_OPTIONS_YAML - (requires configuring PETSc to use libyaml) a string containing additional options for petsc in the form of a YAML document
 .   PETSC_VIEWER_SOCKET_PORT - socket number to use for socket viewer
 -   PETSC_VIEWER_SOCKET_MACHINE - machine to use for socket viewer to connect to
 
@@ -875,7 +882,7 @@ PetscErrorCode  PetscInitialize(int *argc,char ***args,const char file[],const c
 #if defined(PETSC_HAVE_MPI_INIT_THREAD)
     {
       PetscMPIInt provided;
-      ierr = MPI_Init_thread(argc,args,MPI_THREAD_FUNNELED,&provided);CHKERRQ(ierr);
+      ierr = MPI_Init_thread(argc,args,PETSC_MPI_THREAD_REQUIRED,&provided);CHKERRQ(ierr);
     }
 #else
     ierr = MPI_Init(argc,args);CHKERRQ(ierr);

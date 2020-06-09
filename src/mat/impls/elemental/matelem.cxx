@@ -1,4 +1,4 @@
-#include <../src/mat/impls/elemental/matelemimpl.h> /*I "petscmat.h" I*/
+#include <petsc/private/petscelemental.h>
 
 /*
     The variable Petsc_Elemental_keyval is used to indicate an MPI attribute that
@@ -402,7 +402,6 @@ PETSC_INTERN PetscErrorCode MatProductSetFromOptions_Elemental(Mat C)
   Mat_Product    *product = C->product;
 
   PetscFunctionBegin;
-  ierr = MatSetType(C,MATELEMENTAL);CHKERRQ(ierr);
   switch (product->type) {
   case MATPRODUCT_AB:
     ierr = MatProductSetFromOptions_Elemental_AB(C);CHKERRQ(ierr);
@@ -410,7 +409,8 @@ PETSC_INTERN PetscErrorCode MatProductSetFromOptions_Elemental(Mat C)
   case MATPRODUCT_ABt:
     ierr = MatProductSetFromOptions_Elemental_ABt(C);CHKERRQ(ierr);
     break;
-  default: SETERRQ1(PetscObjectComm((PetscObject)C),PETSC_ERR_SUP,"MatProduct type %s is not supported for Elemental and Elemental matrices",MatProductTypes[product->type]);
+  default:
+    break;
   }
   PetscFunctionReturn(0);
 }

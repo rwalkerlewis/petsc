@@ -227,6 +227,21 @@ class Configure(config.base.Configure):
       pass
 
   @staticmethod
+  def isGfortran100plus(compiler, log):
+    '''returns true if the compiler is gfortran-10.0.x or later'''
+    try:
+      (output, error, status) = config.base.Configure.executeShellCommand(compiler+' --version', log = log)
+      output = output +  error
+      import re
+      strmatch = re.match('GNU Fortran\s+\(.*\)\s+(\d+)\.(\d+)',output)
+      if strmatch:
+        VMAJOR,VMINOR = strmatch.groups()
+        if (int(VMAJOR),int(VMINOR)) >= (10,0):
+          return 1
+    except RuntimeError:
+      pass
+
+  @staticmethod
   def isGfortran8plus(compiler, log):
     '''returns true if the compiler is gfortran-8 or later'''
     try:
@@ -451,9 +466,14 @@ class Configure(config.base.Configure):
         else: setattr(self, flagsArg, '')
         self.logPrint('Initialized '+flagsArg+' to '+str(getattr(self, flagsArg)))
       self.popLanguage()
-    for flagsArg in ['CPPFLAGS', 'FPPFLAGS', 'CUDAPPFLAGS', 'CXXPPFLAGS', 'CC_LINKER_FLAGS', 'CXX_LINKER_FLAGS', 'FC_LINKER_FLAGS', 'CUDAC_LINKER_FLAGS','sharedLibraryFlags', 'dynamicLibraryFlags']:
+    for flagsArg in ['CPPFLAGS', 'FPPFLAGS', 'CUDAPPFLAGS', 'CXXPPFLAGS']:
       if flagsArg in self.argDB: setattr(self, flagsArg, self.argDB[flagsArg])
       else: setattr(self, flagsArg, '')
+      self.logPrint('Initialized '+flagsArg+' to '+str(getattr(self, flagsArg)))
+    for flagsArg in ['CC_LINKER_FLAGS', 'CXX_LINKER_FLAGS', 'FC_LINKER_FLAGS', 'CUDAC_LINKER_FLAGS','sharedLibraryFlags', 'dynamicLibraryFlags']:
+      if isinstance(self.argDB[flagsArg],str): val = [self.argDB[flagsArg]]
+      else: val = self.argDB[flagsArg]
+      setattr(self, flagsArg, val)
       self.logPrint('Initialized '+flagsArg+' to '+str(getattr(self, flagsArg)))
     if 'LIBS' in self.argDB:
       self.LIBS = self.argDB['LIBS']

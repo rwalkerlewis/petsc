@@ -270,7 +270,10 @@ static PetscErrorCode  KSPSolve_IBCGS(KSP ksp)
     /* Test for convergence */
     ierr = KSPMonitor(ksp,ksp->its,rnorm);CHKERRQ(ierr);
     ierr = (*ksp->converged)(ksp,ksp->its,rnorm,&ksp->reason,ksp->cnvP);CHKERRQ(ierr);
-    if (ksp->reason) break;
+    if (ksp->reason) {
+      ierr = KSPUnwindPreconditioner(ksp,Xn,Tn);CHKERRQ(ierr);
+      PetscFunctionReturn(0);
+    }
 
     /* un = A*rn */
     ierr = KSP_PCApplyBAorAB(ksp,Rn,Un,Tn);CHKERRQ(ierr);
@@ -336,8 +339,8 @@ PETSC_EXTERN PetscErrorCode KSPCreate_IBCGS(KSP ksp)
   ksp->ops->destroy        = KSPDestroyDefault;
   ksp->ops->buildsolution  = KSPBuildSolutionDefault;
   ksp->ops->buildresidual  = KSPBuildResidualDefault;
-  ksp->ops->setfromoptions = 0;
-  ksp->ops->view           = 0;
+  ksp->ops->setfromoptions = NULL;
+  ksp->ops->view           = NULL;
 #if defined(PETSC_USE_COMPLEX)
   SETERRQ(PetscObjectComm((PetscObject)ksp),PETSC_ERR_SUP,"This is not supported for complex numbers");
 #endif
