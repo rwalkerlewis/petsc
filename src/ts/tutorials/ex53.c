@@ -100,7 +100,8 @@ static PetscErrorCode quadratic_3d_u(PetscInt dim, PetscReal time, const PetscRe
 }
 
 /* Terzaghi Solutions */
-
+/* The analytical solutions given here are drawn from chapter 7, section 3, */
+/* "One-Dimensional Consolidation Problem," from Poroelasticity, by Cheng.  */
 // Displacement
 static PetscErrorCode terzaghi_2d_u(PetscInt dim, PetscReal time, const PetscReal x[], PetscInt Nc, PetscScalar *u, void *ctx)
 {
