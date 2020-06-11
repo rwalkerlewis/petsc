@@ -19,8 +19,8 @@ The weak form would then be, using test function $(v, q, \tau)$,
 */
 
 
-typedef enum {SOL_QUADRATIC, SOL_TERZAGHI, NUM_SOLUTION_TYPES} SolutionType;
-const char *solutionTypes[NUM_SOLUTION_TYPES+1] = {"quadratic", "terzaghi", "unknown"};
+typedef enum {SOL_QUADRATIC, SOL_TERZAGHI, SOL_MANDEL, NUM_SOLUTION_TYPES} SolutionType;
+const char *solutionTypes[NUM_SOLUTION_TYPES+1] = {"quadratic", "terzaghi", "mandel", "unknown"};
 
 typedef struct {
   PetscScalar mu;    /* shear modulus */
@@ -31,6 +31,8 @@ typedef struct {
   PetscScalar mu_f;  /* fluid dynamic viscosity */
   PetscScalar ymax;  /* vertical maximum extent */
   PetscScalar ymin;  /* vertical minimum extent */
+  PetscScalar xmax;  /* horizontal maximum extent */
+  PetscScalar xmin;  /* horizontal minimum extent */
   PetscScalar P_0;   /* magnitude of vertical stress */
 } Parameter;
 
@@ -45,6 +47,8 @@ typedef struct {
   /* Exact solution terms */
   PetscScalar pi;    /* ratio of a circle's circumference to its diameter */
   PetscInt    niter; /* Number of series term iterations in exact solutions */
+  PetscScalar eps;   /* Precision value for root finding */
+  PetscScalar *zeroArray; /* Array of root locations */
 } AppCtx;
 
 static PetscErrorCode zero(PetscInt dim, PetscReal time, const PetscReal x[], PetscInt Nc, PetscScalar *u, void *ctx)
@@ -100,12 +104,8 @@ static PetscErrorCode quadratic_3d_u(PetscInt dim, PetscReal time, const PetscRe
 }
 
 /* Terzaghi Solutions */
-<<<<<<< HEAD
 /* The analytical solutions given here are drawn from chapter 7, section 3, */
 /* "One-Dimensional Consolidation Problem," from Poroelasticity, by Cheng.  */
-=======
-
->>>>>>> bb1eda3550b8397bb5561bb5836a7abad08adb34
 // Displacement
 static PetscErrorCode terzaghi_2d_u(PetscInt dim, PetscReal time, const PetscReal x[], PetscInt Nc, PetscScalar *u, void *ctx)
 {
@@ -255,6 +255,112 @@ static PetscErrorCode terzaghi_2d_eps(PetscInt dim, PetscReal time, const PetscR
   return 0;
 }
 
+/* Mandel Solutions */
+
+static PetscErrorCode mandel_2d_u(PetscInt dim, PetscReal time, const PetscReal x[], PetscInt Nc, PetscScalar *u, void *ctx)
+{
+
+  Parameter  *param;
+  PetscErrorCode ierr;
+  PetscScalar alpha_n;
+
+  AppCtx *user = (AppCtx *) ctx;
+
+  ierr = PetscBagGetData(user->bag, (void **) &param);CHKERRQ(ierr);
+
+  const PetscInt NITER = user->niter;
+  const PetscScalar PI = user->pi;
+
+  const PetscScalar YMAX = param->ymax;
+  const PetscScalar YMIN = param->ymin;
+  const PetscScalar XMAX = param->xmax;
+  const PetscScalar XMIN = param->xmin;
+  const PetscScalar alpha = param->alpha;
+  const PetscScalar K_u = param->K_u;
+  const PetscScalar M = param->M;
+  const PetscScalar G = param->mu;
+  const PetscScalar k = param->k;
+  const PetscScalar mu_f = param->mu_f;
+  const PetscScalar F = param->P_0;
+
+  const PetscScalar K_d = K_u - alpha*alpha*M;
+  const PetscScalar nu = (3.0*K_d - 2.0*G) / (2.0*(3.0*K_d + G ));
+  const PetscScalar nu_u = (3.0*K_u - 2.0*G) / (2.0*(3.0*K_u + G ));
+  const PetscScalar kappa = k / mu_f;
+
+  const PetscScalar b = (YMAX - YMIN) / 2.0;
+  const PetscScalar a = (XMAX - XMIN) / 2.0;
+  const PetscScalar c = ( (2.0*kappa*G) * (1.0 - nu) * (nu_u - nu) ) / ( alpha*alpha * (1.0 - 2.0*nu) * (1.0 - nu_u) );
+
+  // Series term
+  PetscScalar A_x = 0.0;
+  PetscScalar B_x = 0.0;
+
+  for (PetscInt n=1; n < NITER+1; n++)
+  {
+    alpha_n = user->zeroArray[n-1];
+    A_x += ( (sin(alpha_n) * cos(alpha_n)) / (alpha_n - sin(alpha_n) * cos(alpha_n)) ) * exp( -1*(alpha_n*alpha_n*c*time)/(a*a) );
+    B_x += ( cos(alpha_n) / (alpha_n - sin(alpha_n)*cos(alpha_n)) ) * sin( (alpha_n * x[0])/a ) * exp( -1*(alpha_n*alpha_n*c*time)/(a*a) );
+  }
+  u[0] = ((F*nu)/(2.0*G*a) - (F*nu_u)/(G*a) * A_x)* x[0] + F/G * B_x;
+  u[1] = (-1*(F*(1.0-nu))/(2*G*a) + (F*(1-nu_u))/(G*a) * A_x )*x[1];
+  return 0;
+}
+
+static PetscErrorCode mandel_2d_p(PetscInt dim, PetscReal time, const PetscReal x[], PetscInt Nc, PetscScalar *u, void *ctx)
+{
+
+  Parameter  *param;
+  PetscErrorCode ierr;
+  PetscScalar alpha_n;
+
+  AppCtx *user = (AppCtx *) ctx;
+
+  ierr = PetscBagGetData(user->bag, (void **) &param);CHKERRQ(ierr);
+
+  const PetscInt NITER = user->niter;
+  const PetscScalar PI = user->pi;
+
+  const PetscScalar YMAX = param->ymax;
+  const PetscScalar YMIN = param->ymin;
+  const PetscScalar XMAX = param->xmax;
+  const PetscScalar XMIN = param->xmin;
+  const PetscScalar alpha = param->alpha;
+  const PetscScalar K_u = param->K_u;
+  const PetscScalar M = param->M;
+  const PetscScalar G = param->mu;
+  const PetscScalar k = param->k;
+  const PetscScalar mu_f = param->mu_f;
+  const PetscScalar F = param->P_0;
+
+  const PetscScalar K_d = K_u - alpha*alpha*M;
+  const PetscScalar nu = (3.0*K_d - 2.0*G) / (2.0*(3.0*K_d + G ));
+  const PetscScalar nu_u = (3.0*K_u - 2.0*G) / (2.0*(3.0*K_u + G ));
+  const PetscScalar kappa = k / mu_f;
+  const PetscScalar B = (alpha*M)/(K_d + alpha*alpha * M);
+
+  const PetscScalar b = (YMAX - YMIN) / 2.0;
+  const PetscScalar a = (XMAX - XMIN) / 2.0;
+  const PetscScalar c = ( (2.0*kappa*G) * (1.0 - nu) * (nu_u - nu) ) / ( alpha*alpha * (1.0 - 2.0*nu) * (1.0 - nu_u) );
+
+  // Series term
+  PetscScalar aa = 0.0;
+  PetscScalar p  = 0.0;
+  PetscScalar p_0 = 0.0;
+
+  p_0 = (1.0/3.0 * a) * B * (1.0 - nu_u);
+
+  for (PetscInt n=1; n < NITER+1; n++)
+  {
+    aa = user->zeroArray[n-1];
+    p += 2.0*p_0 * (sin(aa)/(aa - sin(aa)*cos(aa))) * (cos(aa*x[0] / a) - cos(aa)) * exp(-1.0*(aa*aa * c * time)/ (a*a));
+  }
+  u[0] = p;
+  return 0;
+}
+
+
+
 /*
   u = x^2
   v = y^2 - 2xy
@@ -328,6 +434,15 @@ static void f0_terzaghi_bd_u(PetscInt dim, PetscInt Nf, PetscInt NfAux,
   f0[1] = P;
 }
 
+static void f0_mandel_bd_u(PetscInt dim, PetscInt Nf, PetscInt NfAux,
+                                    const PetscInt uOff[], const PetscInt uOff_x[], const PetscScalar u[], const PetscScalar u_t[], const PetscScalar u_x[],
+                                    const PetscInt aOff[], const PetscInt aOff_x[], const PetscScalar a[], const PetscScalar a_t[], const PetscScalar a_x[],
+                                    PetscReal t, const PetscReal x[], const PetscReal n[], PetscInt numConstants, const PetscScalar constants[], PetscScalar f0[])
+{
+  const PetscReal P = constants[5];
+
+  f0[1] = P;
+}
 
 /* Standard Kernels - Residual */
 
@@ -527,18 +642,76 @@ static PetscErrorCode ProcessOptions(MPI_Comm comm, AppCtx *options)
   options->solType = SOL_QUADRATIC;
   options->niter   = 200;
   options->pi      = 3.14159265359;
+  options->eps     = 0.000001;
   ierr = PetscStrncpy(options->dmType, DMPLEX, 256);CHKERRQ(ierr);
 
   ierr = PetscOptionsBegin(comm, "", "Biot Poroelasticity Options", "DMPLEX");CHKERRQ(ierr);
   ierr = PetscOptionsInt("-dim", "The topological mesh dimension", "ex53.c", options->dim, &options->dim, NULL);CHKERRQ(ierr);
   ierr = PetscOptionsInt("-niter", "Number of series term iterations in exact solutions", "ex53.c", options->niter, &options->niter, NULL);CHKERRQ(ierr);
+  options->zeroArray = (PetscScalar *) malloc(options->niter);
   ierr = PetscOptionsBool("-simplex", "Simplicial (true) or tensor (false) mesh", "ex53.c", options->simplex, &options->simplex, NULL);CHKERRQ(ierr);
   sol  = options->solType;
   ierr = PetscOptionsEList("-sol_type", "Type of exact solution", "ex53.c", solutionTypes, NUM_SOLUTION_TYPES, solutionTypes[options->solType], &sol, NULL);CHKERRQ(ierr);
   options->solType = (SolutionType) sol;
   ierr = PetscOptionsFList("-dm_type", "Convert DMPlex to another format", "ex53.c", DMList, options->dmType, options->dmType, 256, NULL);CHKERRQ(ierr);
+  ierr = PetscOptionsScalar("-eps", " Precision value for root finding", "ex53.c", options->eps, &options->eps, NULL);CHKERRQ(ierr);
   ierr = PetscOptionsScalar("-pi", "ratio of a circle's circumference to its diameter", "ex53.c", options->pi, &options->pi, NULL);CHKERRQ(ierr);
   ierr = PetscOptionsEnd();CHKERRQ(ierr);
+  PetscFunctionReturn(0);
+}
+
+static PetscErrorCode mandelZeros(MPI_Comm comm, AppCtx *ctx)
+{
+  PetscBag       bag;
+  Parameter     *param;
+  PetscErrorCode ierr;
+  PetscScalar a1, a2, am;
+  PetscScalar y1, y2, ym;
+
+  PetscFunctionBeginUser;
+  ierr = PetscBagGetData(ctx->bag, (void **) &param);CHKERRQ(ierr);
+  const PetscInt NITER = ctx->niter;
+  const PetscScalar PI = ctx->pi;
+  const PetscScalar EPS = ctx->eps;
+  const PetscScalar YMAX = param->ymax;
+  const PetscScalar YMIN = param->ymin;
+  const PetscScalar alpha = param->alpha;
+  const PetscScalar K_u = param->K_u;
+  const PetscScalar M = param->M;
+  const PetscScalar G = param->mu;
+  const PetscScalar k = param->k;
+  const PetscScalar mu_f = param->mu_f;
+  const PetscScalar P_0 = param->P_0;
+
+  const PetscScalar K_d = K_u - alpha*alpha*M;
+  const PetscScalar nu = (3.0*K_d - 2.0*G) / (2.0*(3.0*K_d + G ));
+  const PetscScalar nu_u = (3.0*K_u - 2.0*G) / (2.0*(3.0*K_u + G ));
+  const PetscScalar kappa = k / mu_f;
+
+  // Generate zero values
+  for (PetscInt i=1; i < NITER+1; i++)
+  {
+    a1 = ((PetscScalar) i - 1.0 ) * PI * PI / 4.0 + EPS;
+    a2 = a1 + PI/2;
+    for (PetscInt j=0; j<NITER; j++)
+    {
+      y1 = tan(a1) - (1.0 - nu)/(nu_u - nu)*a1;
+      y2 = tan(a2) - (1.0 - nu)/(nu_u - nu)*a2;
+      am = (a1 + a2)/2.0;
+      ym = tan(am) - (1.0 - nu)/(nu_u - nu)*am;
+      if ((ym*y1) > 0)
+      {
+        a1 = am;
+      } else {
+        a2 = am;
+      }
+      if (abs(y2) < EPS)
+      {
+        am = a2;
+      }
+    }
+    ctx->zeroArray[i-1] = am;
+  }
   PetscFunctionReturn(0);
 }
 
@@ -561,6 +734,8 @@ static PetscErrorCode SetupParameters(AppCtx *ctx)
   ierr = PetscBagRegisterScalar(bag, &p->mu_f,   1.0, "mu_f",  "Fluid Dynamic Viscosity, Pa*s");CHKERRQ(ierr);
   ierr = PetscBagRegisterScalar(bag, &p->ymax,   1.0, "ymax",  "Vertical Maximum Extent, m");CHKERRQ(ierr);
   ierr = PetscBagRegisterScalar(bag, &p->ymax,  -1.0, "ymin",  "Vertical Minimum Extent, m");CHKERRQ(ierr);
+  ierr = PetscBagRegisterScalar(bag, &p->xmax,   1.0, "xmax",  "Horizontal Maximum Extent, m");CHKERRQ(ierr);
+  ierr = PetscBagRegisterScalar(bag, &p->xmax,  -1.0, "xmin",  "Horizontal Minimum Extent, m");CHKERRQ(ierr);
   ierr = PetscBagRegisterScalar(bag, &p->P_0,    1.0, "P_0",   "Magnitude of Vertical Stress, Pa");CHKERRQ(ierr);
   PetscFunctionReturn(0);
 }
@@ -609,6 +784,7 @@ static PetscErrorCode SetupPrimalProblem(DM dm, AppCtx *user)
   PetscInt       id;
   PetscInt       dim;
   PetscErrorCode ierr;
+  PetscInt comps[1];
 
   PetscFunctionBeginUser;
   ierr = DMGetDS(dm, &prob);CHKERRQ(ierr);
@@ -638,6 +814,11 @@ static PetscErrorCode SetupPrimalProblem(DM dm, AppCtx *user)
       break;
       default: SETERRQ1(PetscObjectComm((PetscObject) prob), PETSC_ERR_ARG_WRONG, "Invalid dimension: %D", dim);
     }
+
+    id = 1;
+    ierr = DMAddBoundary(dm, DM_BC_ESSENTIAL, "wall displacement", "marker", 0, 0, NULL, (void (*)(void)) exact[0], 1, &id, user);CHKERRQ(ierr);
+    ierr = DMAddBoundary(dm, DM_BC_ESSENTIAL, "wall pressure",     "marker", 2, 0, NULL, (void (*)(void)) exact[2], 1, &id, user);CHKERRQ(ierr);
+
   case SOL_TERZAGHI:
     ierr = PetscDSSetResidual(prob, 0, f0_u, f1_u);CHKERRQ(ierr);
     ierr = PetscDSSetResidual(prob, 1, f0_epsilon,     NULL);CHKERRQ(ierr);
@@ -655,9 +836,47 @@ static PetscErrorCode SetupPrimalProblem(DM dm, AppCtx *user)
     exact[0] = terzaghi_2d_u;
     exact[1] = terzaghi_2d_eps;
     exact[2] = terzaghi_2d_p;
+
+    id = 3;
+
+    comps[0] = 1;
+    ierr = DMAddBoundary(dm, DM_BC_NATURAL, "vertical stress", "marker", 0, 1, comps, (void (*)(void)) vertical_stress_2d, 1, &id, user);CHKERRQ(ierr);
+    ierr = DMAddBoundary(dm, DM_BC_ESSENTIAL, "drained surface", "marker", 2, 0, NULL, (void (*)(void)) zero, 1, &id, user);CHKERRQ(ierr);
+    id = 1;
+    ierr = DMAddBoundary(dm, DM_BC_ESSENTIAL, "fixed base", "marker", 0, 1, comps, (void (*)(void)) zero, 1, &id, user);CHKERRQ(ierr);
+
     break;
 
-  default: SETERRQ2(PetscObjectComm((PetscObject) prob), PETSC_ERR_ARG_WRONG, "Invalid solution type: %s (%D)", solutionTypes[PetscMin(user->solType, NUM_SOLUTION_TYPES)], user->solType);
+  case SOL_MANDEL:
+    ierr = PetscDSSetResidual(prob, 0, f0_u, f1_u);CHKERRQ(ierr);
+    ierr = PetscDSSetResidual(prob, 1, f0_epsilon,     NULL);CHKERRQ(ierr);
+    ierr = PetscDSSetResidual(prob, 2, f0_p,           f1_p);CHKERRQ(ierr);
+    ierr = PetscDSSetJacobian(prob, 0, 0, NULL,  NULL,  NULL,  g3_uu);CHKERRQ(ierr);
+    ierr = PetscDSSetJacobian(prob, 0, 1, NULL,  NULL,  g2_ue, NULL);CHKERRQ(ierr);
+    ierr = PetscDSSetJacobian(prob, 0, 2, NULL,  NULL,  g2_up, NULL);CHKERRQ(ierr);
+    ierr = PetscDSSetJacobian(prob, 1, 0, NULL,  g1_eu, NULL,  NULL);CHKERRQ(ierr);
+    ierr = PetscDSSetJacobian(prob, 1, 1, g0_ee, NULL,  NULL,  NULL);CHKERRQ(ierr);
+    ierr = PetscDSSetJacobian(prob, 2, 1, g0_pe,  NULL,  NULL,  NULL);CHKERRQ(ierr);
+    ierr = PetscDSSetJacobian(prob, 2, 2, g0_pp,  NULL,  NULL,  g3_pp);CHKERRQ(ierr);
+
+    ierr = PetscDSSetBdResidual(prob, 0, f0_mandel_bd_u, NULL);CHKERRQ(ierr);
+
+    ierr = mandelZeros(PETSC_COMM_WORLD, user);CHKERRQ(ierr);
+
+    exact[0] = mandel_2d_u;
+    exact[1] = mandel_2d_eps;
+    exact[2] = mandel_2d_p;
+
+    id = 3;
+    comps[0] = 1;
+    ierr = DMAddBoundary(dm, DM_BC_NATURAL, "vertical stress", "marker", 0, 1, comps, (void (*)(void)) vertical_stress_2d, 1, &id, user);CHKERRQ(ierr);
+    ierr = DMAddBoundary(dm, DM_BC_ESSENTIAL, "drained surface", "marker", 2, 0, NULL, (void (*)(void)) zero, 1, &id, user);CHKERRQ(ierr);
+    id = 1;
+    ierr = DMAddBoundary(dm, DM_BC_ESSENTIAL, "fixed base", "marker", 0, 1, comps, (void (*)(void)) zero, 1, &id, user);CHKERRQ(ierr);
+
+    break;
+
+    default: SETERRQ2(PetscObjectComm((PetscObject) prob), PETSC_ERR_ARG_WRONG, "Invalid solution type: %s (%D)", solutionTypes[PetscMin(user->solType, NUM_SOLUTION_TYPES)], user->solType);
   }
 
   ierr = PetscDSSetExactSolution(prob, 0, exact[0], user);CHKERRQ(ierr);
