@@ -257,6 +257,7 @@ static PetscErrorCode terzaghi_2d_eps(PetscInt dim, PetscReal time, const PetscR
 
 /* Mandel Solutions */
 
+// Displacement
 static PetscErrorCode mandel_2d_u(PetscInt dim, PetscReal time, const PetscReal x[], PetscInt Nc, PetscScalar *u, void *ctx)
 {
 
@@ -307,6 +308,7 @@ static PetscErrorCode mandel_2d_u(PetscInt dim, PetscReal time, const PetscReal 
   return 0;
 }
 
+// Pressure
 static PetscErrorCode mandel_2d_p(PetscInt dim, PetscReal time, const PetscReal x[], PetscInt Nc, PetscScalar *u, void *ctx)
 {
 
@@ -359,7 +361,64 @@ static PetscErrorCode mandel_2d_p(PetscInt dim, PetscReal time, const PetscReal 
   return 0;
 }
 
+// Trace strain
+static PetscErrorCode mandel_2d_eps(PetscInt dim, PetscReal time, const PetscReal x[], PetscInt Nc, PetscScalar *u, void *ctx)
+{
 
+  Parameter  *param;
+  PetscErrorCode ierr;
+  PetscScalar alpha_n;
+
+  AppCtx *user = (AppCtx *) ctx;
+
+  ierr = PetscBagGetData(user->bag, (void **) &param);CHKERRQ(ierr);
+
+  const PetscInt NITER = user->niter;
+  const PetscScalar PI = user->pi;
+
+  const PetscScalar YMAX = param->ymax;
+  const PetscScalar YMIN = param->ymin;
+  const PetscScalar XMAX = param->xmax;
+  const PetscScalar XMIN = param->xmin;
+  const PetscScalar alpha = param->alpha;
+  const PetscScalar K_u = param->K_u;
+  const PetscScalar M = param->M;
+  const PetscScalar G = param->mu;
+  const PetscScalar k = param->k;
+  const PetscScalar mu_f = param->mu_f;
+  const PetscScalar F = param->P_0;
+
+  const PetscScalar K_d = K_u - alpha*alpha*M;
+  const PetscScalar nu = (3.0*K_d - 2.0*G) / (2.0*(3.0*K_d + G ));
+  const PetscScalar nu_u = (3.0*K_u - 2.0*G) / (2.0*(3.0*K_u + G ));
+  const PetscScalar kappa = k / mu_f;
+  const PetscScalar B = (alpha*M)/(K_d + alpha*alpha * M);
+
+  const PetscScalar b = (YMAX - YMIN) / 2.0;
+  const PetscScalar a = (XMAX - XMIN) / 2.0;
+  const PetscScalar c = ( (2.0*kappa*G) * (1.0 - nu) * (nu_u - nu) ) / ( alpha*alpha * (1.0 - 2.0*nu) * (1.0 - nu_u) );
+
+  // Series term
+  PetscScalar aa = 0.0;
+  PetscScalar eps_A = 0.0;
+  PetscScalar eps_B = 0.0;
+  PetscScalar eps_C = 0.0;
+
+  for (PetscInt n=1; n < NITER+1; n++)
+  {
+    aa = user->zeroArray[n-1];
+
+    eps_A += (aa * exp( (-1.0*aa*aa*c*time)/(a*a) )*cos(aa)*cos( (aa*x[0])/a )) / (a * (aa - sin(aa)*cos(aa))); 
+  
+    eps_B += ( exp( (-1.0*aa*aa*c*time)/(a*a) )*sin(aa)*cos(aa) ) / (aa - sin(aa)*cos(aa));
+
+    eps_C += ( exp( (-1.0*aa*aa*c*time)/(aa*aa) )*sin(aa)*cos(aa) ) / (aa - sin(aa)*cos(aa));
+  }
+
+  u[0] = (F/G)*eps_A + ( (F*nu)/(2.0*G*a) ) - eps_B/(G*a) - (F*(1-nu))/(2*G*a) + eps_C/(G*a);
+  return 0;
+
+}
 
 /*
   u = x^2
