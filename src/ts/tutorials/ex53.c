@@ -270,10 +270,10 @@ static PetscErrorCode mandel_2d_u(PetscInt dim, PetscReal time, const PetscReal 
   ierr = PetscBagGetData(user->bag, (void **) &param);CHKERRQ(ierr);
 
   const PetscInt NITER = user->niter;
-  const PetscScalar PI = user->pi;
+  //const PetscScalar PI = user->pi;
 
-  const PetscScalar YMAX = param->ymax;
-  const PetscScalar YMIN = param->ymin;
+  //const PetscScalar YMAX = param->ymax;
+  //const PetscScalar YMIN = param->ymin;
   const PetscScalar XMAX = param->xmax;
   const PetscScalar XMIN = param->xmin;
   const PetscScalar alpha = param->alpha;
@@ -289,7 +289,7 @@ static PetscErrorCode mandel_2d_u(PetscInt dim, PetscReal time, const PetscReal 
   const PetscScalar nu_u = (3.0*K_u - 2.0*G) / (2.0*(3.0*K_u + G ));
   const PetscScalar kappa = k / mu_f;
 
-  const PetscScalar b = (YMAX - YMIN) / 2.0;
+  //const PetscScalar b = (YMAX - YMIN) / 2.0;
   const PetscScalar a = (XMAX - XMIN) / 2.0;
   const PetscScalar c = ( (2.0*kappa*G) * (1.0 - nu) * (nu_u - nu) ) / ( alpha*alpha * (1.0 - 2.0*nu) * (1.0 - nu_u) );
 
@@ -314,17 +314,16 @@ static PetscErrorCode mandel_2d_p(PetscInt dim, PetscReal time, const PetscReal 
 
   Parameter  *param;
   PetscErrorCode ierr;
-  PetscScalar alpha_n;
 
   AppCtx *user = (AppCtx *) ctx;
 
   ierr = PetscBagGetData(user->bag, (void **) &param);CHKERRQ(ierr);
 
   const PetscInt NITER = user->niter;
-  const PetscScalar PI = user->pi;
+  //const PetscScalar PI = user->pi;
 
-  const PetscScalar YMAX = param->ymax;
-  const PetscScalar YMIN = param->ymin;
+  //const PetscScalar YMAX = param->ymax;
+  //const PetscScalar YMIN = param->ymin;
   const PetscScalar XMAX = param->xmax;
   const PetscScalar XMIN = param->xmin;
   const PetscScalar alpha = param->alpha;
@@ -333,7 +332,7 @@ static PetscErrorCode mandel_2d_p(PetscInt dim, PetscReal time, const PetscReal 
   const PetscScalar G = param->mu;
   const PetscScalar k = param->k;
   const PetscScalar mu_f = param->mu_f;
-  const PetscScalar F = param->P_0;
+  // const PetscScalar F = param->P_0;
 
   const PetscScalar K_d = K_u - alpha*alpha*M;
   const PetscScalar nu = (3.0*K_d - 2.0*G) / (2.0*(3.0*K_d + G ));
@@ -341,7 +340,7 @@ static PetscErrorCode mandel_2d_p(PetscInt dim, PetscReal time, const PetscReal 
   const PetscScalar kappa = k / mu_f;
   const PetscScalar B = (alpha*M)/(K_d + alpha*alpha * M);
 
-  const PetscScalar b = (YMAX - YMIN) / 2.0;
+  //const PetscScalar b = (YMAX - YMIN) / 2.0;
   const PetscScalar a = (XMAX - XMIN) / 2.0;
   const PetscScalar c = ( (2.0*kappa*G) * (1.0 - nu) * (nu_u - nu) ) / ( alpha*alpha * (1.0 - 2.0*nu) * (1.0 - nu_u) );
 
@@ -367,17 +366,16 @@ static PetscErrorCode mandel_2d_eps(PetscInt dim, PetscReal time, const PetscRea
 
   Parameter  *param;
   PetscErrorCode ierr;
-  PetscScalar alpha_n;
 
   AppCtx *user = (AppCtx *) ctx;
 
   ierr = PetscBagGetData(user->bag, (void **) &param);CHKERRQ(ierr);
 
   const PetscInt NITER = user->niter;
-  const PetscScalar PI = user->pi;
+  //const PetscScalar PI = user->pi;
 
-  const PetscScalar YMAX = param->ymax;
-  const PetscScalar YMIN = param->ymin;
+  //const PetscScalar YMAX = param->ymax;
+  //const PetscScalar YMIN = param->ymin;
   const PetscScalar XMAX = param->xmax;
   const PetscScalar XMIN = param->xmin;
   const PetscScalar alpha = param->alpha;
@@ -392,9 +390,9 @@ static PetscErrorCode mandel_2d_eps(PetscInt dim, PetscReal time, const PetscRea
   const PetscScalar nu = (3.0*K_d - 2.0*G) / (2.0*(3.0*K_d + G ));
   const PetscScalar nu_u = (3.0*K_u - 2.0*G) / (2.0*(3.0*K_u + G ));
   const PetscScalar kappa = k / mu_f;
-  const PetscScalar B = (alpha*M)/(K_d + alpha*alpha * M);
+  //const PetscScalar B = (alpha*M)/(K_d + alpha*alpha * M);
 
-  const PetscScalar b = (YMAX - YMIN) / 2.0;
+  //const PetscScalar b = (YMAX - YMIN) / 2.0;
   const PetscScalar a = (XMAX - XMIN) / 2.0;
   const PetscScalar c = ( (2.0*kappa*G) * (1.0 - nu) * (nu_u - nu) ) / ( alpha*alpha * (1.0 - 2.0*nu) * (1.0 - nu_u) );
 
@@ -408,8 +406,8 @@ static PetscErrorCode mandel_2d_eps(PetscInt dim, PetscReal time, const PetscRea
   {
     aa = user->zeroArray[n-1];
 
-    eps_A += (aa * exp( (-1.0*aa*aa*c*time)/(a*a) )*cos(aa)*cos( (aa*x[0])/a )) / (a * (aa - sin(aa)*cos(aa))); 
-  
+    eps_A += (aa * exp( (-1.0*aa*aa*c*time)/(a*a) )*cos(aa)*cos( (aa*x[0])/a )) / (a * (aa - sin(aa)*cos(aa)));
+
     eps_B += ( exp( (-1.0*aa*aa*c*time)/(a*a) )*sin(aa)*cos(aa) ) / (aa - sin(aa)*cos(aa));
 
     eps_C += ( exp( (-1.0*aa*aa*c*time)/(aa*aa) )*sin(aa)*cos(aa) ) / (aa - sin(aa)*cos(aa));
@@ -721,7 +719,7 @@ static PetscErrorCode ProcessOptions(MPI_Comm comm, AppCtx *options)
 
 static PetscErrorCode mandelZeros(MPI_Comm comm, AppCtx *ctx)
 {
-  PetscBag       bag;
+  //PetscBag       bag;
   Parameter     *param;
   PetscErrorCode ierr;
   PetscScalar a1, a2, am;
@@ -732,20 +730,20 @@ static PetscErrorCode mandelZeros(MPI_Comm comm, AppCtx *ctx)
   const PetscInt NITER = ctx->niter;
   const PetscScalar PI = ctx->pi;
   const PetscScalar EPS = ctx->eps;
-  const PetscScalar YMAX = param->ymax;
-  const PetscScalar YMIN = param->ymin;
+  //const PetscScalar YMAX = param->ymax;
+  //const PetscScalar YMIN = param->ymin;
   const PetscScalar alpha = param->alpha;
   const PetscScalar K_u = param->K_u;
   const PetscScalar M = param->M;
   const PetscScalar G = param->mu;
-  const PetscScalar k = param->k;
-  const PetscScalar mu_f = param->mu_f;
-  const PetscScalar P_0 = param->P_0;
+  //const PetscScalar k = param->k;
+  //const PetscScalar mu_f = param->mu_f;
+  //const PetscScalar P_0 = param->P_0;
 
   const PetscScalar K_d = K_u - alpha*alpha*M;
   const PetscScalar nu = (3.0*K_d - 2.0*G) / (2.0*(3.0*K_d + G ));
   const PetscScalar nu_u = (3.0*K_u - 2.0*G) / (2.0*(3.0*K_u + G ));
-  const PetscScalar kappa = k / mu_f;
+  //const PetscScalar kappa = k / mu_f;
 
   // Generate zero values
   for (PetscInt i=1; i < NITER+1; i++)
