@@ -58,7 +58,7 @@ static PetscErrorCode zero(PetscInt dim, PetscReal time, const PetscReal x[], Pe
   return 0;
 }
 
-static PetscErrorCode vertical_stress_2d(PetscInt dim, PetscReal time, const PetscReal x[], PetscInt Nc, PetscScalar *u, void *ctx)
+static PetscErrorCode vertical_stress_2d_terzaghi(PetscInt dim, PetscReal time, const PetscReal x[], PetscInt Nc, PetscScalar *u, void *ctx)
 {
   Parameter  *param;
   PetscErrorCode ierr;
@@ -71,6 +71,27 @@ static PetscErrorCode vertical_stress_2d(PetscInt dim, PetscReal time, const Pet
   //PetscInt d;
   //for (d = 0; d < dim; ++d) u[d] = 0.0;
   u[1] = P;
+  return 0;
+}
+
+static PetscErrorCode vertical_stress_2d_mandel(PetscInt dim, PetscReal time, const PetscReal x[], PetscInt Nc, PetscScalar *u, void *ctx)
+{
+  Parameter  *param;
+  PetscErrorCode ierr;
+
+  AppCtx *user = (AppCtx *) ctx;
+
+  ierr = PetscBagGetData(user->bag, (void **) &param);CHKERRQ(ierr);
+  const PetscScalar P = param->P_0;
+
+  //PetscInt d;
+  //for (d = 0; d < dim; ++d) u[d] = 0.0;
+  if (x[1] == 1) {
+      u[1] = P;
+  } else if (x[1] == 0) {
+    u[1] = -1.0*P;
+  }
+
   return 0;
 }
 
@@ -498,7 +519,11 @@ static void f0_mandel_bd_u(PetscInt dim, PetscInt Nf, PetscInt NfAux,
 {
   const PetscReal P = constants[5];
 
-  f0[1] = P;
+  if (x[1] == 1) {
+    f0[1] = P;
+  } else if (x[1] == 0) {
+    f0[1] = -1.0*P;
+  }
 }
 
 /* Standard Kernels - Residual */
@@ -841,11 +866,14 @@ static PetscErrorCode SetupPrimalProblem(DM dm, AppCtx *user)
   PetscInt       id;
   PetscInt       dim;
   PetscErrorCode ierr;
-  PetscInt comps[1];
+  PetscInt comps[1], id_mandel[2];
 
   PetscFunctionBeginUser;
   ierr = DMGetDS(dm, &prob);CHKERRQ(ierr);
   ierr = PetscDSGetSpatialDimension(prob, &dim);CHKERRQ(ierr);
+
+  /* Setup Problem Formulation and Boundary Conditions */
+
   switch (user->solType) {
   case SOL_QUADRATIC:
     ierr = PetscDSSetResidual(prob, 0, f0_quadratic_u, f1_u);CHKERRQ(ierr);
@@ -895,9 +923,8 @@ static PetscErrorCode SetupPrimalProblem(DM dm, AppCtx *user)
     exact[2] = terzaghi_2d_p;
 
     id = 3;
-
     comps[0] = 1;
-    ierr = DMAddBoundary(dm, DM_BC_NATURAL, "vertical stress", "marker", 0, 1, comps, (void (*)(void)) vertical_stress_2d, 1, &id, user);CHKERRQ(ierr);
+    ierr = DMAddBoundary(dm, DM_BC_NATURAL, "vertical stress", "marker", 0, 1, comps, (void (*)(void)) vertical_stress_2d_terzaghi, 1, &id, user);CHKERRQ(ierr);
     ierr = DMAddBoundary(dm, DM_BC_ESSENTIAL, "drained surface", "marker", 2, 0, NULL, (void (*)(void)) zero, 1, &id, user);CHKERRQ(ierr);
     id = 1;
     ierr = DMAddBoundary(dm, DM_BC_ESSENTIAL, "fixed base", "marker", 0, 1, comps, (void (*)(void)) zero, 1, &id, user);CHKERRQ(ierr);
@@ -924,12 +951,15 @@ static PetscErrorCode SetupPrimalProblem(DM dm, AppCtx *user)
     exact[1] = mandel_2d_eps;
     exact[2] = mandel_2d_p;
 
-    id = 3;
+    id_mandel[0] = 3;
+    id_mandel[1] = 1;
     comps[0] = 1;
-    ierr = DMAddBoundary(dm, DM_BC_NATURAL, "vertical stress", "marker", 0, 1, comps, (void (*)(void)) vertical_stress_2d, 1, &id, user);CHKERRQ(ierr);
-    ierr = DMAddBoundary(dm, DM_BC_ESSENTIAL, "drained surface", "marker", 2, 0, NULL, (void (*)(void)) zero, 1, &id, user);CHKERRQ(ierr);
-    id = 1;
-    ierr = DMAddBoundary(dm, DM_BC_ESSENTIAL, "fixed base", "marker", 0, 1, comps, (void (*)(void)) zero, 1, &id, user);CHKERRQ(ierr);
+    ierr = DMAddBoundary(dm, DM_BC_NATURAL, "vertical stress", "marker", 0, 1, comps, (void (*)(void)) vertical_stress_2d_mandel, 2, id_mandel, user);CHKERRQ(ierr);
+    ierr = DMAddBoundary(dm, DM_BC_ESSENTIAL, "fixed base", "marker", 0, 1, comps, (void (*)(void)) zero, 2, id_mandel, user);CHKERRQ(ierr);
+
+    id_mandel[0] = 2;
+    id_mandel[1] = 0;
+    ierr = DMAddBoundary(dm, DM_BC_ESSENTIAL, "drained surface", "marker", 2, 0, NULL, (void (*)(void)) zero, 2, id_mandel, user);CHKERRQ(ierr);
 
     break;
 
@@ -939,22 +969,6 @@ static PetscErrorCode SetupPrimalProblem(DM dm, AppCtx *user)
   ierr = PetscDSSetExactSolution(prob, 0, exact[0], user);CHKERRQ(ierr);
   ierr = PetscDSSetExactSolution(prob, 1, exact[1], user);CHKERRQ(ierr);
   ierr = PetscDSSetExactSolution(prob, 2, exact[2], user);CHKERRQ(ierr);
-
-  /* Setup Boundary Conditions */
-  if (user->solType == SOL_TERZAGHI) {
-    id = 3;
-    PetscInt comps[1];
-    comps[0] = 1;
-    ierr = DMAddBoundary(dm, DM_BC_NATURAL, "vertical stress", "marker", 0, 1, comps, (void (*)(void)) vertical_stress_2d, 1, &id, user);CHKERRQ(ierr);
-    ierr = DMAddBoundary(dm, DM_BC_ESSENTIAL, "drained surface", "marker", 2, 0, NULL, (void (*)(void)) zero, 1, &id, user);CHKERRQ(ierr);
-    id = 1;
-    ierr = DMAddBoundary(dm, DM_BC_ESSENTIAL, "fixed base", "marker", 0, 1, comps, (void (*)(void)) zero, 1, &id, user);CHKERRQ(ierr);
-
-  } else {
-    id = 1;
-    ierr = DMAddBoundary(dm, DM_BC_ESSENTIAL, "wall displacement", "marker", 0, 0, NULL, (void (*)(void)) exact[0], 1, &id, user);CHKERRQ(ierr);
-    ierr = DMAddBoundary(dm, DM_BC_ESSENTIAL, "wall pressure",     "marker", 2, 0, NULL, (void (*)(void)) exact[2], 1, &id, user);CHKERRQ(ierr);
-  }
 
   /* Setup constants */
   {
@@ -1088,6 +1102,11 @@ int main(int argc, char **argv)
     suffix: 2d_p1_quad_terzaghi
     requires: triangle
     args: --sol_type terzaghi -dm_plex_separate_marker -displacement_petscspace_degree 2 -tracestrain_petscspace_degree 1 -pressure_petscspace_degree 1 -dm_refine 2 -dmts_check .0001 -ts_max_steps 5  -ts_convergence_estimate
+
+    test:
+      suffix: 2d_p1_quad_mandel
+      requires: triangle
+      args: --sol_type mandel -dm_plex_separate_marker -displacement_petscspace_degree 2 -tracestrain_petscspace_degree 1 -pressure_petscspace_degree 1 -dm_refine 2 -dmts_check .0001 -ts_max_steps 5  -ts_convergence_estimate
 
   test:
     suffix: 2d_p1_quad_tconv
