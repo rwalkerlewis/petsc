@@ -1079,7 +1079,7 @@ int main(int argc, char **argv)
 
   ierr = TSSolve(ts, u);CHKERRQ(ierr);
   ierr = TSGetSolution(ts, &u);CHKERRQ(ierr);
-  ierr = VecViewFromOptions(u, NULL, "-sol_view");CHKERRQ(ierr);
+  ierr = VecViewFromOptions(u, NULL, "-sol_vec_view");CHKERRQ(ierr);
 
   /* Cleanup */
   ierr = VecDestroy(&u);CHKERRQ(ierr);
@@ -1106,8 +1106,8 @@ int main(int argc, char **argv)
   test:
     suffix: 2d_p1_quad_mandel
     requires: triangle
-    args: --sol_type mandel -dm_plex_separate_marker -displacement_petscspace_degree 2 -tracestrain_petscspace_degree 1 -pressure_petscspace_degree 1 -dm_refine 2 -dmts_check .0001 -ts_max_steps 5  -ts_convergence_estimate
-
+    args: --sol_type mandel -dm_plex_separate_marker -displacement_petscspace_degree 2 -tracestrain_petscspace_degree 1 -pressure_petscspace_degree 1 -dm_refine 2 \
+    -dmts_check .0001 -ts_max_steps 5  -ts_convergence_estimate -ts_monitor -sol_vec_view vtk:sol.vtk::append
   test:
     suffix: 2d_p1_quad_tconv
     requires: triangle
