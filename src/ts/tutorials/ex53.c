@@ -1103,10 +1103,10 @@ int main(int argc, char **argv)
     requires: triangle
     args: --sol_type terzaghi -dm_plex_separate_marker -displacement_petscspace_degree 2 -tracestrain_petscspace_degree 1 -pressure_petscspace_degree 1 -dm_refine 2 -dmts_check .0001 -ts_max_steps 5  -ts_convergence_estimate
 
-    test:
-      suffix: 2d_p1_quad_mandel
-      requires: triangle
-      args: --sol_type mandel -dm_plex_separate_marker -displacement_petscspace_degree 2 -tracestrain_petscspace_degree 1 -pressure_petscspace_degree 1 -dm_refine 2 -dmts_check .0001 -ts_max_steps 5  -ts_convergence_estimate
+  test:
+    suffix: 2d_p1_quad_mandel
+    requires: triangle
+    args: --sol_type mandel -dm_plex_separate_marker -displacement_petscspace_degree 2 -tracestrain_petscspace_degree 1 -pressure_petscspace_degree 1 -dm_refine 2 -dmts_check .0001 -ts_max_steps 5  -ts_convergence_estimate
 
   test:
     suffix: 2d_p1_quad_tconv
